@@ -111,13 +111,17 @@ def corregir_pandemia(df, meses_afectados):
 
 
 def entrenar_modelo(train, test, trend, seasonal):
-    """Entrena el modelo y retorna predicciones y métricas."""
+    """
+    Entrena el modelo usando la optimización automática de statsmodels.
+    Esta es la forma más precisa de ajustar los parámetros del modelo.
+    """
+    # Usar optimización automática de statsmodels (sin parámetros manuales)
     modelo = ExponentialSmoothing(
         train['ventas'],
         trend=trend,
         seasonal=seasonal,
         seasonal_periods=12
-    ).fit()
+    ).fit()  # Sin argumentos = optimización automática
     
     predicciones = modelo.forecast(len(test))
     
@@ -132,42 +136,6 @@ def entrenar_modelo(train, test, trend, seasonal):
         'R²': r2,
         'Error Absoluto Total': error_total
     }
-
-
-def optimizar_modelo(train, test, trend, seasonal):
-    """Optimiza hiperparámetros del modelo."""
-    mejor_mae = float('inf')
-    mejor_modelo = None
-    mejores_pred = None
-    
-    alphas = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8]
-    gammas = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6]
-    
-    for alpha in alphas:
-        for gamma in gammas:
-            try:
-                modelo = ExponentialSmoothing(
-                    train['ventas'],
-                    trend=trend,
-                    seasonal=seasonal,
-                    seasonal_periods=12
-                ).fit(
-                    smoothing_level=alpha,
-                    smoothing_seasonal=gamma,
-                    optimized=False
-                )
-                
-                pred = modelo.forecast(len(test))
-                mae = mean_absolute_error(test['ventas'], pred)
-                
-                if mae < mejor_mae:
-                    mejor_mae = mae
-                    mejor_modelo = modelo
-                    mejores_pred = pred
-            except:
-                pass
-    
-    return mejor_modelo, mejores_pred
 
 
 # ============================================================================
@@ -214,11 +182,7 @@ corregir_2020 = st.sidebar.checkbox(
     help="Ajusta marzo y abril 2020 usando promedios históricos"
 )
 
-optimizar = st.sidebar.checkbox(
-    "Optimizar hiperparámetros",
-    value=True,
-    help="Busca los mejores parámetros del modelo (más lento pero más preciso)"
-)
+# Nota: La optimización automática de statsmodels se usa siempre (es más precisa)
 
 # ============================================================================
 # PROCESAMIENTO Y VISUALIZACIÓN
@@ -302,17 +266,9 @@ if uploaded_file is not None:
                     mejor_trend = None if mejor['Tendencia'] == 'None' else mejor['Tendencia']
                     mejor_seasonal = mejor['Estacionalidad']
             
-            # Entrenar modelo final
-            with st.spinner("Entrenando modelo final..."):
-                if optimizar:
-                    modelo_opt, pred_opt = optimizar_modelo(train, test, mejor_trend, mejor_seasonal)
-                    if modelo_opt is not None:
-                        modelo_final = modelo_opt
-                        predicciones = pred_opt
-                    else:
-                        modelo_final, predicciones, _ = entrenar_modelo(train, test, mejor_trend, mejor_seasonal)
-                else:
-                    modelo_final, predicciones, _ = entrenar_modelo(train, test, mejor_trend, mejor_seasonal)
+            # Entrenar modelo final con optimización automática de statsmodels
+            with st.spinner("Entrenando modelo con optimización automática..."):
+                modelo_final, predicciones, _ = entrenar_modelo(train, test, mejor_trend, mejor_seasonal)
             
             # Calcular métricas finales
             mae = mean_absolute_error(test['ventas'], predicciones)
