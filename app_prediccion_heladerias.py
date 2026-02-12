@@ -52,7 +52,7 @@ def cargar_y_transformar_datos(df):
     df_melted = df.melt(id_vars=[id_column], var_name='mes', value_name='ventas')
     df_melted = df_melted.rename(columns={id_column: 'AÑO'})
     
-    # Limpiar datos
+    # Limpiar datos vacíos (strings vacíos)
     df_melted = df_melted[df_melted['ventas'].astype(str).str.strip() != '']
     
     # Detectar formato de números
@@ -77,7 +77,13 @@ def cargar_y_transformar_datos(df):
     
     df_final = df_melted[['fecha', 'ventas']].sort_values('fecha').reset_index(drop=True)
     
-    # Imputar valores NaN con promedio del mismo mes
+    # Encontrar la última fecha con dato real (no NaN)
+    ultima_fecha_real = df_final[df_final['ventas'].notna()]['fecha'].max()
+    
+    # Filtrar solo hasta la última fecha con dato real (eliminar meses futuros sin datos)
+    df_final = df_final[df_final['fecha'] <= ultima_fecha_real].copy()
+    
+    # Imputar valores NaN SOLO para meses históricos (dentro del rango de datos)
     if df_final['ventas'].isna().sum() > 0:
         df_final['mes'] = df_final['fecha'].dt.month
         promedios = df_final.groupby('mes')['ventas'].mean()
@@ -171,7 +177,7 @@ encoding = st.sidebar.selectbox(
 año_corte = st.sidebar.number_input(
     "Año de corte para entrenamiento",
     min_value=2015,
-    max_value=2025,
+    max_value=2026,
     value=2024,
     help="El modelo entrena hasta este año y valida con el siguiente"
 )
@@ -356,15 +362,19 @@ if uploaded_file is not None:
             # Predicciones futuras
             st.subheader("🔮 Predicciones Futuras (Próximos 12 meses)")
             
-            # Re-entrenar con todos los datos
+            # Filtrar solo datos con ventas reales (sin NaN)
+            df_con_datos = df[df['ventas'].notna()].copy()
+            
+            # Re-entrenar con todos los datos reales
             modelo_futuro = ExponentialSmoothing(
-                df['ventas'],
+                df_con_datos['ventas'],
                 trend=mejor_trend,
                 seasonal=mejor_seasonal,
                 seasonal_periods=12
             ).fit()
             
-            ultima_fecha = df['fecha'].max()
+            # Última fecha con datos reales
+            ultima_fecha = df_con_datos['fecha'].max()
             fechas_futuras = pd.date_range(
                 start=ultima_fecha + pd.DateOffset(months=1),
                 periods=12,
@@ -382,9 +392,9 @@ if uploaded_file is not None:
             # Gráfico de predicciones futuras
             fig_futuro = make_subplots(rows=1, cols=2, subplot_titles=('Serie Completa', 'Predicciones Futuras'))
             
-            # Serie histórica + predicción
+            # Serie histórica + predicción (solo datos reales)
             fig_futuro.add_trace(
-                go.Scatter(x=df['fecha'], y=df['ventas'], name='Histórico', line=dict(color='#2ecc71')),
+                go.Scatter(x=df_con_datos['fecha'], y=df_con_datos['ventas'], name='Histórico', line=dict(color='#2ecc71')),
                 row=1, col=1
             )
             fig_futuro.add_trace(
