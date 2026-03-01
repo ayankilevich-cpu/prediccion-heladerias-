@@ -285,16 +285,18 @@ if uploaded_file is not None:
             rmse = np.sqrt(mean_squared_error(test['ventas'], predicciones))
             r2 = r2_score(test['ventas'], predicciones)
             error_total = np.abs(test['ventas'].values - predicciones.values).sum()
+            error_total_pct = (error_total / test['ventas'].sum()) * 100
             
             st.markdown("---")
             st.subheader("📊 Resultados del Modelo")
             
             # Métricas en cards
-            col1, col2, col3, col4 = st.columns(4)
+            col1, col2, col3, col4, col5 = st.columns(5)
             col1.metric("MAE", formato_numero(mae))
             col2.metric("RMSE", formato_numero(rmse))
             col3.metric("R²", f"{r2:.4f}")
-            col4.metric("Error Absoluto Total", formato_numero(error_total))
+            col4.metric("Error Absoluto Total (kg)", formato_numero(error_total))
+            col5.metric("Error Absoluto Total (%)", f"{error_total_pct:.2f}%".replace('.', ','))
             
             # Comparativa de validación
             st.subheader(f"🔍 Validación: Predicción vs Real ({periodo_inicio} - {periodo_fin})")
