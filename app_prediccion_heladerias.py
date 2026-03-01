@@ -174,12 +174,12 @@ encoding = st.sidebar.selectbox(
     index=0
 )
 
-año_corte = st.sidebar.number_input(
-    "Año de corte para entrenamiento",
-    min_value=2015,
-    max_value=2026,
-    value=2024,
-    help="El modelo entrena hasta este año y valida con el siguiente"
+meses_validacion = st.sidebar.number_input(
+    "Meses de validación",
+    min_value=3,
+    max_value=24,
+    value=12,
+    help="Cantidad de meses recientes con datos reales para validar el modelo (ventana deslizante)"
 )
 
 corregir_2020 = st.sidebar.checkbox(
@@ -230,15 +230,19 @@ if uploaded_file is not None:
         fig_serie.update_layout(hovermode='x unified')
         st.plotly_chart(fig_serie, use_container_width=True)
         
-        # División train/test
+        # División train/test: siempre usar los últimos N meses con datos reales
         df = df.dropna(subset=['ventas']).sort_values('fecha').reset_index(drop=True)
-        train = df[df['fecha'].dt.year <= año_corte].copy()
-        test = df[df['fecha'].dt.year == año_corte + 1].copy()
         
-        if len(test) == 0:
-            st.warning("No hay datos para el año de validación. Usando últimos 12 meses.")
-            train = df.iloc[:-12].copy()
-            test = df.iloc[-12:].copy()
+        n_val = min(meses_validacion, len(df) - 12)
+        if n_val <= 0:
+            n_val = len(df) // 2
+        
+        train = df.iloc[:-n_val].copy()
+        test = df.iloc[-n_val:].copy()
+        
+        periodo_inicio = test['fecha'].min().strftime('%b %Y')
+        periodo_fin = test['fecha'].max().strftime('%b %Y')
+        st.info(f"📊 Validación: últimos **{len(test)} meses** con datos reales ({periodo_inicio} - {periodo_fin})")
         
         st.markdown("---")
         
@@ -293,7 +297,7 @@ if uploaded_file is not None:
             col4.metric("Error Absoluto Total", formato_numero(error_total))
             
             # Comparativa de validación
-            st.subheader("🔍 Validación: Predicción vs Real")
+            st.subheader(f"🔍 Validación: Predicción vs Real ({periodo_inicio} - {periodo_fin})")
             
             comparativa = test[['fecha', 'ventas']].copy()
             comparativa['prediccion'] = predicciones.values
@@ -463,7 +467,7 @@ else:
     ### 🔧 Parámetros configurables
     
     - **Separador CSV**: Caracter que separa las columnas (`;`, `,`, etc.)
-    - **Año de corte**: Último año para entrenamiento (el siguiente se usa para validación)
+    - **Meses de validación**: Cantidad de meses recientes con datos reales para validar el modelo
     - **Corrección pandemia**: Ajusta valores atípicos de marzo/abril 2020
     - **Optimización**: Busca automáticamente los mejores hiperparámetros
     """)
