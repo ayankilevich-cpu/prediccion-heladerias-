@@ -12,11 +12,17 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 import tempfile
+import io
 import os
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from fpdf import FPDF
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
+import matplotlib.ticker as mticker
 
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
@@ -148,8 +154,81 @@ def entrenar_modelo(train, test, trend, seasonal):
 
 
 # ============================================================================
-# GENERACIÓN DE INFORME PDF
+# GENERACIÓN DE INFORME PDF (usa matplotlib para los gráficos, sin Chrome)
 # ============================================================================
+
+def _fig_a_png_bytes(fig_mpl):
+    """Convierte una figura matplotlib a bytes PNG en memoria."""
+    buf = io.BytesIO()
+    fig_mpl.savefig(buf, format='png', dpi=150, bbox_inches='tight',
+                    facecolor='white', edgecolor='none')
+    plt.close(fig_mpl)
+    buf.seek(0)
+    return buf
+
+
+def _crear_grafico_serie(df):
+    """Crea gráfico de serie temporal con matplotlib."""
+    fig, ax = plt.subplots(figsize=(10, 4))
+    ax.plot(df['fecha'], df['ventas'], color='#1f77b4', linewidth=1.8)
+    ax.set_title('Ventas Históricas', fontsize=13, fontweight='bold', color='#2c3e50')
+    ax.set_xlabel('Fecha', fontsize=10)
+    ax.set_ylabel('Ventas', fontsize=10)
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
+    ax.xaxis.set_major_locator(mdates.AutoDateLocator())
+    fig.autofmt_xdate(rotation=45)
+    ax.grid(True, alpha=0.3)
+    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: formato_numero(x, 0)))
+    fig.tight_layout()
+    return fig
+
+
+def _crear_grafico_comparacion(comparativa):
+    """Crea gráfico de barras comparativo con matplotlib."""
+    fig, ax = plt.subplots(figsize=(10, 4.5))
+    x = np.arange(len(comparativa))
+    ancho = 0.35
+    ax.bar(x - ancho/2, comparativa['ventas'], ancho, label='Real', color='#2ecc71')
+    ax.bar(x + ancho/2, comparativa['prediccion'], ancho, label='Predicción', color='#3498db')
+    ax.set_title('Comparación: Ventas Reales vs Predicción', fontsize=13,
+                 fontweight='bold', color='#2c3e50')
+    ax.set_xlabel('Mes', fontsize=10)
+    ax.set_ylabel('Ventas', fontsize=10)
+    ax.set_xticks(x)
+    ax.set_xticklabels(comparativa['mes'], rotation=45, ha='right', fontsize=8)
+    ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: formato_numero(v, 0)))
+    ax.legend()
+    ax.grid(True, axis='y', alpha=0.3)
+    fig.tight_layout()
+    return fig
+
+
+def _crear_grafico_futuro(df_historico, df_futuro):
+    """Crea gráfico de predicciones futuras con matplotlib (2 subplots)."""
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4.5))
+
+    ax1.plot(df_historico['fecha'], df_historico['ventas'], color='#2ecc71',
+             linewidth=1.5, label='Histórico')
+    ax1.plot(df_futuro['fecha'], df_futuro['prediccion'], color='#e74c3c',
+             linewidth=1.5, linestyle='--', label='Predicción')
+    ax1.set_title('Serie Completa', fontsize=11, fontweight='bold', color='#2c3e50')
+    ax1.xaxis.set_major_formatter(mdates.DateFormatter('%b %Y'))
+    ax1.xaxis.set_major_locator(mdates.AutoDateLocator())
+    ax1.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: formato_numero(v, 0)))
+    ax1.legend(fontsize=8)
+    ax1.grid(True, alpha=0.3)
+
+    ax2.bar(range(len(df_futuro)), df_futuro['prediccion'], color='#3498db')
+    ax2.set_title('Predicciones Futuras', fontsize=11, fontweight='bold', color='#2c3e50')
+    ax2.set_xticks(range(len(df_futuro)))
+    ax2.set_xticklabels(df_futuro['mes'], rotation=45, ha='right', fontsize=7)
+    ax2.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: formato_numero(v, 0)))
+    ax2.grid(True, axis='y', alpha=0.3)
+
+    fig.autofmt_xdate(rotation=45)
+    fig.tight_layout()
+    return fig
+
 
 class InformePDF(FPDF):
     """PDF personalizado con encabezado y pie de página."""
@@ -200,7 +279,6 @@ class InformePDF(FPDF):
             ancho_total = self.w - 20
             anchos = [ancho_total / len(encabezados)] * len(encabezados)
 
-        # Encabezado
         self.set_font('Helvetica', 'B', 9)
         self.set_fill_color(52, 73, 94)
         self.set_text_color(255, 255, 255)
@@ -208,7 +286,6 @@ class InformePDF(FPDF):
             self.cell(anchos[i], 8, enc, 1, 0, 'C', fill=True)
         self.ln()
 
-        # Filas
         self.set_font('Helvetica', '', 8)
         self.set_text_color(0, 0, 0)
         for idx, fila in enumerate(filas):
@@ -220,14 +297,14 @@ class InformePDF(FPDF):
                 self.cell(anchos[i], 7, str(celda), 1, 0, 'C', fill=True)
             self.ln()
 
-    def agregar_grafico(self, fig, ancho=190):
-        """Exporta un gráfico Plotly como imagen y lo inserta en el PDF."""
+    def agregar_imagen_de_bytes(self, img_buf, ancho=190):
+        """Inserta una imagen desde un buffer BytesIO en el PDF."""
         with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
             tmp_path = tmp.name
+            tmp.write(img_buf.read())
         try:
-            fig.write_image(tmp_path, width=1200, height=500, scale=2)
+            alto_img = ancho * 0.45
             espacio = self.h - self.get_y() - 20
-            alto_img = ancho * 500 / 1200
             if espacio < alto_img:
                 self.add_page()
             self.image(tmp_path, x=10, w=ancho)
@@ -236,13 +313,12 @@ class InformePDF(FPDF):
             os.unlink(tmp_path)
 
 
-def generar_informe_pdf(df_raw, df, comparativa, df_futuro, metricas,
-                        fig_serie, fig_comp, fig_futuro,
+def generar_informe_pdf(df_raw, df, comparativa, df_futuro, df_historico, metricas,
                         mejor_trend, mejor_seasonal,
                         periodo_inicio, periodo_fin,
                         total_real, total_predicho, diferencia_total, diferencia_pct,
                         correccion_pandemia):
-    """Genera el informe PDF completo con todos los datos, métricas y gráficos."""
+    """Genera el informe PDF completo con gráficos matplotlib (sin Chrome)."""
     pdf = InformePDF()
     pdf.alias_nb_pages()
     pdf.set_auto_page_break(auto=True, margin=20)
@@ -297,7 +373,8 @@ def generar_informe_pdf(df_raw, df, comparativa, df_futuro, metricas,
 
     # --- Serie temporal ---
     pdf.titulo_seccion('2. Serie Temporal de Ventas')
-    pdf.agregar_grafico(fig_serie)
+    fig_serie_mpl = _crear_grafico_serie(df)
+    pdf.agregar_imagen_de_bytes(_fig_a_png_bytes(fig_serie_mpl))
 
     # --- Resultados del modelo ---
     pdf.add_page()
@@ -327,7 +404,8 @@ def generar_informe_pdf(df_raw, df, comparativa, df_futuro, metricas,
     pdf.ln(5)
 
     pdf.subtitulo('Gráfico comparativo')
-    pdf.agregar_grafico(fig_comp)
+    fig_comp_mpl = _crear_grafico_comparacion(comparativa)
+    pdf.agregar_imagen_de_bytes(_fig_a_png_bytes(fig_comp_mpl))
 
     pdf.subtitulo('Detalle mensual')
     enc_comp = ['Mes', 'Venta Real', 'Predicción', 'Error', 'Error %']
@@ -358,7 +436,8 @@ def generar_informe_pdf(df_raw, df, comparativa, df_futuro, metricas,
     pdf.ln(5)
 
     pdf.subtitulo('Gráfico de predicciones')
-    pdf.agregar_grafico(fig_futuro)
+    fig_fut_mpl = _crear_grafico_futuro(df_historico, df_futuro)
+    pdf.agregar_imagen_de_bytes(_fig_a_png_bytes(fig_fut_mpl))
 
     pdf.subtitulo('Detalle mensual de predicciones')
     enc_fut = ['Mes', 'Predicción (kg)']
@@ -694,10 +773,8 @@ if uploaded_file is not None:
                         df=df,
                         comparativa=comparativa,
                         df_futuro=df_futuro,
+                        df_historico=df_con_datos,
                         metricas=metricas_pdf,
-                        fig_serie=fig_serie,
-                        fig_comp=fig_comp,
-                        fig_futuro=fig_futuro,
                         mejor_trend=mejor_trend,
                         mejor_seasonal=mejor_seasonal,
                         periodo_inicio=periodo_inicio,
