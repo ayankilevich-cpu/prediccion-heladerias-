@@ -36,6 +36,71 @@ def formato_numero(numero, decimales=2):
     texto = texto.replace(',', 'X').replace('.', ',').replace('X', '.')
     return texto
 
+
+_MESES_ES = (
+    'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre',
+)
+
+_ABREV_MES_ENCABEZADO = {
+    'ENERO': 'Ene', 'FEBRERO': 'Feb', 'MARZO': 'Mar', 'ABRIL': 'Abr',
+    'MAYO': 'May', 'JUNIO': 'Jun', 'JULIO': 'Jul', 'AGOSTO': 'Ago',
+    'SEPTIEMBRE': 'Sep', 'OCTUBRE': 'Oct', 'NOVIEMBRE': 'Nov', 'DICIEMBRE': 'Dic',
+}
+
+
+def _fecha_texto_es(fecha):
+    """Mes y año en español (evita depender del locale del sistema)."""
+    if fecha is None or pd.isna(fecha):
+        return ''
+    t = pd.Timestamp(fecha)
+    return f'{_MESES_ES[t.month - 1]} {t.year}'
+
+
+def _limpiar_texto_encabezado_pdf(s):
+    """Quita BOM y corrige texto típico mal decodificado (p. ej. AÃ±o -> Año)."""
+    if s is None:
+        return ''
+    t = str(s).strip()
+    if t.startswith('\ufeff'):
+        t = t[1:].strip()
+    if 'Ã' in t:
+        try:
+            t = t.encode('latin-1').decode('utf-8')
+        except (UnicodeDecodeError, UnicodeEncodeError):
+            pass
+    return t.strip()
+
+
+def _encabezado_columna_datos_raw(nombre_columna):
+    """Encabezado corto para la tabla del CSV en el PDF (meses abreviados)."""
+    t = _limpiar_texto_encabezado_pdf(nombre_columna)
+    if t.lower() in ('año', 'ano'):
+        return 'Año'
+    u = t.upper().strip()
+    return _ABREV_MES_ENCABEZADO.get(u, t[:8])
+
+
+def _celda_preview_csv(valor, max_len=11):
+    """Texto legible para celdas del CSV: sin nan, enteros sin .0."""
+    if pd.isna(valor):
+        return '-'
+    if isinstance(valor, (np.integer, int)):
+        return str(int(valor))
+    if isinstance(valor, (np.floating, float)):
+        if np.isnan(valor):
+            return '-'
+        if abs(valor - round(valor)) < 1e-9:
+            return str(int(round(valor)))
+        return formato_numero(float(valor), 1)
+    s = str(valor).strip()
+    if s.lower() in ('nan', 'none', ''):
+        return '-'
+    if len(s) > max_len:
+        return s[: max_len - 1] + '…'
+    return s
+
+
 # Configuración de la página
 st.set_page_config(
     page_title="Predicción de Demanda - Heladerías",
@@ -274,19 +339,20 @@ class InformePDF(FPDF):
         self.set_text_color(44, 62, 80)
         self.cell(ancho, 7, str(valor), 0, 2, 'C')
 
-    def agregar_tabla(self, encabezados, filas, anchos=None):
+    def agregar_tabla(self, encabezados, filas, anchos=None, *,
+                      tam_encabezado=9, tam_celdas=8, alto_encabezado=8, alto_fila=7):
         if anchos is None:
             ancho_total = self.w - 20
             anchos = [ancho_total / len(encabezados)] * len(encabezados)
 
-        self.set_font('Helvetica', 'B', 9)
+        self.set_font('Helvetica', 'B', tam_encabezado)
         self.set_fill_color(52, 73, 94)
         self.set_text_color(255, 255, 255)
         for i, enc in enumerate(encabezados):
-            self.cell(anchos[i], 8, enc, 1, 0, 'C', fill=True)
+            self.cell(anchos[i], alto_encabezado, str(enc), 1, 0, 'C', fill=True)
         self.ln()
 
-        self.set_font('Helvetica', '', 8)
+        self.set_font('Helvetica', '', tam_celdas)
         self.set_text_color(0, 0, 0)
         for idx, fila in enumerate(filas):
             if idx % 2 == 0:
@@ -294,7 +360,7 @@ class InformePDF(FPDF):
             else:
                 self.set_fill_color(255, 255, 255)
             for i, celda in enumerate(fila):
-                self.cell(anchos[i], 7, str(celda), 1, 0, 'C', fill=True)
+                self.cell(anchos[i], alto_fila, str(celda), 1, 0, 'C', fill=True)
             self.ln()
 
     def agregar_imagen_de_bytes(self, img_buf, ancho=190):
@@ -336,7 +402,9 @@ def generar_informe_pdf(df_raw, df, comparativa, df_futuro, df_historico, metric
     pdf.set_font('Helvetica', '', 11)
     pdf.cell(0, 8, f'Fecha del informe: {datetime.now().strftime("%d/%m/%Y %H:%M")}', 0, 1, 'C')
 
-    rango_datos = f"{df['fecha'].min().strftime('%b %Y')} - {df['fecha'].max().strftime('%b %Y')}"
+    rango_datos = (
+        f"{_fecha_texto_es(df['fecha'].min())} a {_fecha_texto_es(df['fecha'].max())}"
+    )
     pdf.cell(0, 8, f'Rango de datos: {rango_datos}', 0, 1, 'C')
     pdf.cell(0, 8, f'Total de observaciones: {len(df)}', 0, 1, 'C')
 
@@ -349,26 +417,40 @@ def generar_informe_pdf(df_raw, df, comparativa, df_futuro, df_historico, metric
     pdf.add_page()
     pdf.titulo_seccion('1. Datos Cargados')
     pdf.texto_normal(
-        f'Se cargaron {df_raw.shape[0]} filas y {df_raw.shape[1]} columnas. '
-        f'Los datos abarcan desde {df["fecha"].min().strftime("%B %Y")} '
-        f'hasta {df["fecha"].max().strftime("%B %Y")} ({len(df)} meses).'
+        f'Vista del archivo en formato ancho: {df_raw.shape[0]} filas y '
+        f'{df_raw.shape[1]} columnas (típicamente una fila por año y una columna por mes). '
+        f'La serie mensual transformada que usa el modelo abarca desde '
+        f'{_fecha_texto_es(df["fecha"].min())} hasta {_fecha_texto_es(df["fecha"].max())} '
+        f'({len(df)} meses con dato).'
     )
 
-    enc_raw = [str(c) for c in df_raw.columns]
-    max_cols = min(len(enc_raw), 13)
-    enc_raw = enc_raw[:max_cols]
-    ancho_col = (pdf.w - 20) / max_cols
-    anchos_raw = [ancho_col] * max_cols
+    cols_preview = list(df_raw.columns[: min(len(df_raw.columns), 13)])
+    enc_raw = [_encabezado_columna_datos_raw(c) for c in cols_preview]
+    max_cols = len(enc_raw)
+    ancho_disponible = pdf.w - 20
+    if max_cols <= 1:
+        anchos_raw = [ancho_disponible]
+    else:
+        ancho_ano = 16.0
+        resto = ancho_disponible - ancho_ano
+        anchos_raw = [ancho_ano] + [resto / (max_cols - 1)] * (max_cols - 1)
 
     filas_raw = []
     for _, row in df_raw.head(10).iterrows():
-        fila = [str(row[c])[:12] for c in df_raw.columns[:max_cols]]
+        fila = [_celda_preview_csv(row[c]) for c in cols_preview]
         filas_raw.append(fila)
     if len(df_raw) > 10:
-        filas_raw.append(['...' for _ in range(max_cols)])
+        filas_raw.append(['...' if i == 0 else '-' for i in range(max_cols)])
 
-    pdf.set_font('Helvetica', '', 7)
-    pdf.agregar_tabla(enc_raw, filas_raw, anchos_raw)
+    pdf.agregar_tabla(
+        enc_raw,
+        filas_raw,
+        anchos_raw,
+        tam_encabezado=6,
+        tam_celdas=6,
+        alto_encabezado=6,
+        alto_fila=5,
+    )
     pdf.ln(5)
 
     # --- Serie temporal ---
