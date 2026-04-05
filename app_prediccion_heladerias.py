@@ -447,7 +447,11 @@ def generar_informe_pdf(df_raw, df, comparativa, df_futuro, df_historico, metric
         filas_fut.append([row['mes'], formato_numero(row['prediccion'])])
     pdf.agregar_tabla(enc_fut, filas_fut, anchos_fut)
 
-    return pdf.output()
+    # fpdf2 devuelve bytearray con output(); Streamlit solo acepta bytes/str/archivo.
+    # Escribir en BytesIO garantiza tipo bytes vía getvalue().
+    buf_pdf = io.BytesIO()
+    pdf.output(buf_pdf)
+    return buf_pdf.getvalue()
 
 
 # ============================================================================
