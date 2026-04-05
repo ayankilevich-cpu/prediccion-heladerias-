@@ -11,9 +11,12 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from datetime import datetime
+import tempfile
+import os
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from fpdf import FPDF
 
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
@@ -142,6 +145,230 @@ def entrenar_modelo(train, test, trend, seasonal):
         'R²': r2,
         'Error Absoluto Total': error_total
     }
+
+
+# ============================================================================
+# GENERACIÓN DE INFORME PDF
+# ============================================================================
+
+class InformePDF(FPDF):
+    """PDF personalizado con encabezado y pie de página."""
+
+    def header(self):
+        self.set_font('Helvetica', 'B', 10)
+        self.set_text_color(100, 100, 100)
+        self.cell(0, 8, 'Informe de Predicción de Demanda - Heladerías', 0, 1, 'R')
+        self.line(10, self.get_y(), 200, self.get_y())
+        self.ln(4)
+
+    def footer(self):
+        self.set_y(-15)
+        self.set_font('Helvetica', 'I', 8)
+        self.set_text_color(128, 128, 128)
+        self.cell(0, 10, f'Página {self.page_no()}/{{nb}}', 0, 0, 'C')
+
+    def titulo_seccion(self, texto):
+        self.set_font('Helvetica', 'B', 13)
+        self.set_text_color(44, 62, 80)
+        self.set_fill_color(236, 240, 241)
+        self.cell(0, 10, texto, 0, 1, 'L', fill=True)
+        self.ln(3)
+
+    def subtitulo(self, texto):
+        self.set_font('Helvetica', 'B', 11)
+        self.set_text_color(52, 73, 94)
+        self.cell(0, 8, texto, 0, 1, 'L')
+        self.ln(1)
+
+    def texto_normal(self, texto):
+        self.set_font('Helvetica', '', 10)
+        self.set_text_color(0, 0, 0)
+        self.multi_cell(0, 6, texto)
+        self.ln(2)
+
+    def agregar_metrica(self, nombre, valor, x, y, ancho=45):
+        self.set_xy(x, y)
+        self.set_font('Helvetica', '', 8)
+        self.set_text_color(100, 100, 100)
+        self.cell(ancho, 5, nombre, 0, 2, 'C')
+        self.set_font('Helvetica', 'B', 12)
+        self.set_text_color(44, 62, 80)
+        self.cell(ancho, 7, str(valor), 0, 2, 'C')
+
+    def agregar_tabla(self, encabezados, filas, anchos=None):
+        if anchos is None:
+            ancho_total = self.w - 20
+            anchos = [ancho_total / len(encabezados)] * len(encabezados)
+
+        # Encabezado
+        self.set_font('Helvetica', 'B', 9)
+        self.set_fill_color(52, 73, 94)
+        self.set_text_color(255, 255, 255)
+        for i, enc in enumerate(encabezados):
+            self.cell(anchos[i], 8, enc, 1, 0, 'C', fill=True)
+        self.ln()
+
+        # Filas
+        self.set_font('Helvetica', '', 8)
+        self.set_text_color(0, 0, 0)
+        for idx, fila in enumerate(filas):
+            if idx % 2 == 0:
+                self.set_fill_color(245, 245, 245)
+            else:
+                self.set_fill_color(255, 255, 255)
+            for i, celda in enumerate(fila):
+                self.cell(anchos[i], 7, str(celda), 1, 0, 'C', fill=True)
+            self.ln()
+
+    def agregar_grafico(self, fig, ancho=190):
+        """Exporta un gráfico Plotly como imagen y lo inserta en el PDF."""
+        with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as tmp:
+            tmp_path = tmp.name
+        try:
+            fig.write_image(tmp_path, width=1200, height=500, scale=2)
+            espacio = self.h - self.get_y() - 20
+            alto_img = ancho * 500 / 1200
+            if espacio < alto_img:
+                self.add_page()
+            self.image(tmp_path, x=10, w=ancho)
+            self.ln(5)
+        finally:
+            os.unlink(tmp_path)
+
+
+def generar_informe_pdf(df_raw, df, comparativa, df_futuro, metricas,
+                        fig_serie, fig_comp, fig_futuro,
+                        mejor_trend, mejor_seasonal,
+                        periodo_inicio, periodo_fin,
+                        total_real, total_predicho, diferencia_total, diferencia_pct,
+                        correccion_pandemia):
+    """Genera el informe PDF completo con todos los datos, métricas y gráficos."""
+    pdf = InformePDF()
+    pdf.alias_nb_pages()
+    pdf.set_auto_page_break(auto=True, margin=20)
+    pdf.add_page()
+
+    # --- Portada ---
+    pdf.ln(20)
+    pdf.set_font('Helvetica', 'B', 24)
+    pdf.set_text_color(44, 62, 80)
+    pdf.cell(0, 15, 'Informe de Predicción de Demanda', 0, 1, 'C')
+    pdf.set_font('Helvetica', '', 16)
+    pdf.set_text_color(100, 100, 100)
+    pdf.cell(0, 10, 'Modelo Holt-Winters para Heladerías', 0, 1, 'C')
+    pdf.ln(10)
+    pdf.set_font('Helvetica', '', 11)
+    pdf.cell(0, 8, f'Fecha del informe: {datetime.now().strftime("%d/%m/%Y %H:%M")}', 0, 1, 'C')
+
+    rango_datos = f"{df['fecha'].min().strftime('%b %Y')} - {df['fecha'].max().strftime('%b %Y')}"
+    pdf.cell(0, 8, f'Rango de datos: {rango_datos}', 0, 1, 'C')
+    pdf.cell(0, 8, f'Total de observaciones: {len(df)}', 0, 1, 'C')
+
+    config_trend = mejor_trend if mejor_trend else 'Sin tendencia'
+    pdf.cell(0, 8, f'Configuración: Tendencia={config_trend} | Estacionalidad={mejor_seasonal}', 0, 1, 'C')
+    if correccion_pandemia:
+        pdf.cell(0, 8, 'Corrección de pandemia 2020 aplicada', 0, 1, 'C')
+
+    # --- Datos cargados ---
+    pdf.add_page()
+    pdf.titulo_seccion('1. Datos Cargados')
+    pdf.texto_normal(
+        f'Se cargaron {df_raw.shape[0]} filas y {df_raw.shape[1]} columnas. '
+        f'Los datos abarcan desde {df["fecha"].min().strftime("%B %Y")} '
+        f'hasta {df["fecha"].max().strftime("%B %Y")} ({len(df)} meses).'
+    )
+
+    enc_raw = [str(c) for c in df_raw.columns]
+    max_cols = min(len(enc_raw), 13)
+    enc_raw = enc_raw[:max_cols]
+    ancho_col = (pdf.w - 20) / max_cols
+    anchos_raw = [ancho_col] * max_cols
+
+    filas_raw = []
+    for _, row in df_raw.head(10).iterrows():
+        fila = [str(row[c])[:12] for c in df_raw.columns[:max_cols]]
+        filas_raw.append(fila)
+    if len(df_raw) > 10:
+        filas_raw.append(['...' for _ in range(max_cols)])
+
+    pdf.set_font('Helvetica', '', 7)
+    pdf.agregar_tabla(enc_raw, filas_raw, anchos_raw)
+    pdf.ln(5)
+
+    # --- Serie temporal ---
+    pdf.titulo_seccion('2. Serie Temporal de Ventas')
+    pdf.agregar_grafico(fig_serie)
+
+    # --- Resultados del modelo ---
+    pdf.add_page()
+    pdf.titulo_seccion('3. Resultados del Modelo')
+
+    pdf.subtitulo('Métricas de rendimiento')
+    y_metricas = pdf.get_y()
+    pdf.agregar_metrica('MAE', formato_numero(metricas['MAE']), 10, y_metricas, 38)
+    pdf.agregar_metrica('RMSE', formato_numero(metricas['RMSE']), 48, y_metricas, 38)
+    pdf.agregar_metrica('R²', f"{metricas['R²']:.4f}", 86, y_metricas, 38)
+    pdf.agregar_metrica('Error Abs. Total (kg)', formato_numero(metricas['Error Absoluto Total']), 124, y_metricas, 38)
+    error_pct = (metricas['Error Absoluto Total'] / total_real * 100) if total_real else 0
+    pdf.agregar_metrica('Error Abs. Total %', f"{error_pct:.2f}%".replace('.', ','), 162, y_metricas, 38)
+    pdf.set_y(y_metricas + 20)
+    pdf.ln(5)
+
+    # --- Validación ---
+    pdf.titulo_seccion(f'4. Validación: Real vs Predicho ({periodo_inicio} - {periodo_fin})')
+
+    pdf.subtitulo('Totales del período de validación')
+    y_totales = pdf.get_y()
+    pdf.agregar_metrica('Total Venta Real (kg)', formato_numero(total_real), 10, y_totales, 47)
+    pdf.agregar_metrica('Total Predicción (kg)', formato_numero(total_predicho), 57, y_totales, 47)
+    pdf.agregar_metrica('Diferencia (kg)', formato_numero(diferencia_total), 104, y_totales, 47)
+    pdf.agregar_metrica('Diferencia %', f"{diferencia_pct:.2f}%".replace('.', ','), 151, y_totales, 47)
+    pdf.set_y(y_totales + 20)
+    pdf.ln(5)
+
+    pdf.subtitulo('Gráfico comparativo')
+    pdf.agregar_grafico(fig_comp)
+
+    pdf.subtitulo('Detalle mensual')
+    enc_comp = ['Mes', 'Venta Real', 'Predicción', 'Error', 'Error %']
+    anchos_comp = [35, 40, 40, 40, 35]
+    filas_comp = []
+    for _, row in comparativa.iterrows():
+        filas_comp.append([
+            row['mes'],
+            formato_numero(row['ventas']),
+            formato_numero(row['prediccion']),
+            formato_numero(row['error']),
+            f"{row['error_pct']:.2f}%".replace('.', ',')
+        ])
+    pdf.agregar_tabla(enc_comp, filas_comp, anchos_comp)
+    pdf.ln(5)
+
+    # --- Predicciones futuras ---
+    pdf.add_page()
+    pdf.titulo_seccion('5. Predicciones Futuras (Próximos 12 meses)')
+
+    pdf.subtitulo('Resumen')
+    y_res = pdf.get_y()
+    pdf.agregar_metrica('Total Anual Predicho (kg)', formato_numero(df_futuro['prediccion'].sum()), 10, y_res, 63)
+    pdf.agregar_metrica('Promedio Mensual (kg)', formato_numero(df_futuro['prediccion'].mean()), 73, y_res, 63)
+    mes_pico = df_futuro.loc[df_futuro['prediccion'].idxmax(), 'mes']
+    pdf.agregar_metrica('Mes Pico', mes_pico, 136, y_res, 63)
+    pdf.set_y(y_res + 20)
+    pdf.ln(5)
+
+    pdf.subtitulo('Gráfico de predicciones')
+    pdf.agregar_grafico(fig_futuro)
+
+    pdf.subtitulo('Detalle mensual de predicciones')
+    enc_fut = ['Mes', 'Predicción (kg)']
+    anchos_fut = [100, 90]
+    filas_fut = []
+    for _, row in df_futuro.iterrows():
+        filas_fut.append([row['mes'], formato_numero(row['prediccion'])])
+    pdf.agregar_tabla(enc_fut, filas_fut, anchos_fut)
+
+    return pdf.output()
 
 
 # ============================================================================
@@ -439,15 +666,56 @@ if uploaded_file is not None:
                 hide_index=True
             )
             
-            # Botón de descarga
-            csv = df_futuro.to_csv(index=False)
-            st.download_button(
-                label="📥 Descargar Predicciones (CSV)",
-                data=csv,
-                file_name="predicciones_futuras.csv",
-                mime="text/csv"
-            )
-            
+            # Botones de descarga
+            st.markdown("---")
+            st.subheader("📥 Exportar Resultados")
+            col_dl1, col_dl2 = st.columns(2)
+
+            with col_dl1:
+                csv = df_futuro.to_csv(index=False)
+                st.download_button(
+                    label="📥 Descargar Predicciones (CSV)",
+                    data=csv,
+                    file_name="predicciones_futuras.csv",
+                    mime="text/csv",
+                    use_container_width=True
+                )
+
+            with col_dl2:
+                with st.spinner("Generando informe PDF..."):
+                    metricas_pdf = {
+                        'MAE': mae,
+                        'RMSE': rmse,
+                        'R²': r2,
+                        'Error Absoluto Total': error_total
+                    }
+                    pdf_bytes = generar_informe_pdf(
+                        df_raw=df_raw,
+                        df=df,
+                        comparativa=comparativa,
+                        df_futuro=df_futuro,
+                        metricas=metricas_pdf,
+                        fig_serie=fig_serie,
+                        fig_comp=fig_comp,
+                        fig_futuro=fig_futuro,
+                        mejor_trend=mejor_trend,
+                        mejor_seasonal=mejor_seasonal,
+                        periodo_inicio=periodo_inicio,
+                        periodo_fin=periodo_fin,
+                        total_real=total_real,
+                        total_predicho=total_predicho,
+                        diferencia_total=diferencia_total,
+                        diferencia_pct=diferencia_pct,
+                        correccion_pandemia=corregir_2020
+                    )
+                st.download_button(
+                    label="📄 Descargar Informe Completo (PDF)",
+                    data=pdf_bytes,
+                    file_name=f"informe_prediccion_{datetime.now().strftime('%Y%m%d_%H%M')}.pdf",
+                    mime="application/pdf",
+                    use_container_width=True
+                )
+
             st.success("✅ Análisis completado exitosamente!")
             
     except Exception as e:
