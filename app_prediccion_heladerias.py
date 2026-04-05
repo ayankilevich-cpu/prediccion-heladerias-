@@ -49,6 +49,24 @@ _ABREV_MES_ENCABEZADO = {
 }
 
 
+def _quitar_bom_texto(s):
+    """
+    Quita el BOM UTF-8 (U+FEFF) al inicio del texto.
+    str.strip() no lo elimina y FPDF/Helvetica falla con ese carácter.
+    """
+    if s is None:
+        return ''
+    t = str(s)
+    while t and t[0] == '\ufeff':
+        t = t[1:]
+    return t.strip()
+
+
+def _sanear_texto_fpdf(s):
+    """Texto seguro para celdas FPDF con fuentes estándar (sin BOM inicial)."""
+    return _quitar_bom_texto(s)
+
+
 def _fecha_texto_es(fecha):
     """Mes y año en español (evita depender del locale del sistema)."""
     if fecha is None or pd.isna(fecha):
@@ -61,9 +79,7 @@ def _limpiar_texto_encabezado_pdf(s):
     """Quita BOM y corrige texto típico mal decodificado (p. ej. AÃ±o -> Año)."""
     if s is None:
         return ''
-    t = str(s).strip()
-    if t.startswith('\ufeff'):
-        t = t[1:].strip()
+    t = _quitar_bom_texto(s)
     if 'Ã' in t:
         try:
             t = t.encode('latin-1').decode('utf-8')
@@ -93,11 +109,11 @@ def _celda_preview_csv(valor, max_len=11):
         if abs(valor - round(valor)) < 1e-9:
             return str(int(round(valor)))
         return formato_numero(float(valor), 1)
-    s = str(valor).strip()
+    s = _quitar_bom_texto(str(valor))
     if s.lower() in ('nan', 'none', ''):
         return '-'
     if len(s) > max_len:
-        return s[: max_len - 1] + '…'
+        return s[: max_len - 1] + '...'
     return s
 
 
@@ -315,29 +331,29 @@ class InformePDF(FPDF):
         self.set_font('Helvetica', 'B', 13)
         self.set_text_color(44, 62, 80)
         self.set_fill_color(236, 240, 241)
-        self.cell(0, 10, texto, 0, 1, 'L', fill=True)
+        self.cell(0, 10, _sanear_texto_fpdf(texto), 0, 1, 'L', fill=True)
         self.ln(3)
 
     def subtitulo(self, texto):
         self.set_font('Helvetica', 'B', 11)
         self.set_text_color(52, 73, 94)
-        self.cell(0, 8, texto, 0, 1, 'L')
+        self.cell(0, 8, _sanear_texto_fpdf(texto), 0, 1, 'L')
         self.ln(1)
 
     def texto_normal(self, texto):
         self.set_font('Helvetica', '', 10)
         self.set_text_color(0, 0, 0)
-        self.multi_cell(0, 6, texto)
+        self.multi_cell(0, 6, _sanear_texto_fpdf(texto))
         self.ln(2)
 
     def agregar_metrica(self, nombre, valor, x, y, ancho=45):
         self.set_xy(x, y)
         self.set_font('Helvetica', '', 8)
         self.set_text_color(100, 100, 100)
-        self.cell(ancho, 5, nombre, 0, 2, 'C')
+        self.cell(ancho, 5, _sanear_texto_fpdf(nombre), 0, 2, 'C')
         self.set_font('Helvetica', 'B', 12)
         self.set_text_color(44, 62, 80)
-        self.cell(ancho, 7, str(valor), 0, 2, 'C')
+        self.cell(ancho, 7, _sanear_texto_fpdf(str(valor)), 0, 2, 'C')
 
     def agregar_tabla(self, encabezados, filas, anchos=None, *,
                       tam_encabezado=9, tam_celdas=8, alto_encabezado=8, alto_fila=7):
@@ -349,7 +365,7 @@ class InformePDF(FPDF):
         self.set_fill_color(52, 73, 94)
         self.set_text_color(255, 255, 255)
         for i, enc in enumerate(encabezados):
-            self.cell(anchos[i], alto_encabezado, str(enc), 1, 0, 'C', fill=True)
+            self.cell(anchos[i], alto_encabezado, _sanear_texto_fpdf(str(enc)), 1, 0, 'C', fill=True)
         self.ln()
 
         self.set_font('Helvetica', '', tam_celdas)
@@ -360,7 +376,7 @@ class InformePDF(FPDF):
             else:
                 self.set_fill_color(255, 255, 255)
             for i, celda in enumerate(fila):
-                self.cell(anchos[i], alto_fila, str(celda), 1, 0, 'C', fill=True)
+                self.cell(anchos[i], alto_fila, _sanear_texto_fpdf(str(celda)), 1, 0, 'C', fill=True)
             self.ln()
 
     def agregar_imagen_de_bytes(self, img_buf, ancho=190):
@@ -562,8 +578,9 @@ separador = st.sidebar.selectbox(
 
 encoding = st.sidebar.selectbox(
     "Codificación",
-    ['latin1', 'utf-8', 'cp1252'],
-    index=0
+    ['latin1', 'utf-8', 'utf-8-sig', 'cp1252'],
+    index=0,
+    help="Use utf-8-si el CSV viene de Excel y la primera columna muestra caracteres raros (BOM)."
 )
 
 meses_validacion = st.sidebar.number_input(
@@ -590,6 +607,7 @@ if uploaded_file is not None:
     # Cargar datos
     try:
         df_raw = pd.read_csv(uploaded_file, sep=separador, encoding=encoding)
+        df_raw.columns = [_quitar_bom_texto(c) for c in df_raw.columns]
         
         # Mostrar datos cargados
         st.subheader("📊 Datos Cargados")
