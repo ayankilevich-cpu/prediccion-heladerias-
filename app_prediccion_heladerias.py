@@ -11,10 +11,14 @@ Para ejecutar:
 import streamlit as st
 import pandas as pd
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timezone
+import json
+import uuid
 import tempfile
 import io
 import os
+from urllib import error as urllib_error
+from urllib import request as urllib_request
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -142,12 +146,56 @@ def cargar_dataframe_desde_upload(uploaded_file, sep, enc):
     return pd.read_csv(uploaded_file, sep=sep, encoding=enc)
 
 
+def _secrets_dict():
+    try:
+        return dict(st.secrets)
+    except Exception:
+        return {}
+
+
+def registrar_evento_uso(evento, franquicia_id='', extra=None):
+    """
+    Si existe USO_LOG_WEBHOOK en secrets (Streamlit Cloud) o en env, envía un JSON POST.
+    No interrumpe la app ante fallos de red. No incluye datos de ventas.
+    """
+    secrets = _secrets_dict()
+    webhook = (secrets.get('USO_LOG_WEBHOOK') or os.environ.get('USO_LOG_WEBHOOK', '')).strip()
+    if not webhook.lower().startswith(('http://', 'https://')):
+        return
+    sid = ''
+    try:
+        sid = st.session_state.get('_uso_session_id', '')
+    except Exception:
+        pass
+    payload = {
+        'evento': str(evento)[:64],
+        'timestamp_utc': datetime.now(timezone.utc).isoformat(),
+        'franquicia_id': (franquicia_id or '')[:120],
+        'session_id': sid[:64],
+        'app': 'prediccion_heladerias',
+        'extra': extra if isinstance(extra, dict) else {},
+    }
+    body = json.dumps(payload, ensure_ascii=False).encode('utf-8')
+    headers = {'Content-Type': 'application/json; charset=utf-8'}
+    api_key = (secrets.get('USO_LOG_API_KEY') or os.environ.get('USO_LOG_API_KEY', '')).strip()
+    if api_key:
+        headers['Authorization'] = f'Bearer {api_key}'
+    req = urllib_request.Request(webhook, data=body, headers=headers, method='POST')
+    try:
+        urllib_request.urlopen(req, timeout=12)
+    except (urllib_error.URLError, urllib_error.HTTPError, TimeoutError, OSError):
+        pass
+
+
 # Configuración de la página
 st.set_page_config(
     page_title="Predicción de Demanda - Heladerías",
     page_icon="🍦",
     layout="wide"
 )
+
+if '_uso_session_id' not in st.session_state:
+    st.session_state['_uso_session_id'] = str(uuid.uuid4())
 
 # Título principal
 st.title("🍦 Predicción de Demanda para Heladerías")
@@ -654,6 +702,28 @@ corregir_2020 = st.sidebar.checkbox(
     help="Ajusta marzo y abril 2020 usando promedios históricos"
 )
 
+st.sidebar.subheader("3. Identificación")
+st.sidebar.text_input(
+    "Código o nombre de franquicia",
+    key="franquicia_identificador",
+    max_chars=80,
+    placeholder="Ej.: Grido La Falda 012",
+    help="Opcional. Si tu red habilitó registro de uso, ayuda a saber quién utiliza la herramienta. No se transmiten tus cifras de ventas.",
+)
+with st.sidebar.expander("Privacidad y registro de uso"):
+    st.caption(
+        "Solo pueden registrarse eventos genéricos (inicio de sesión, análisis ejecutado) y el texto "
+        "que escribas arriba. Los archivos de ventas no se envían a ningún servidor de registro. "
+        "El administrador configura la URL en los secretos de la app (USO_LOG_WEBHOOK)."
+    )
+
+if not st.session_state.get("_uso_evento_sesion_enviado", False):
+    registrar_evento_uso(
+        "sesion_inicio",
+        st.session_state.get("franquicia_identificador", ""),
+    )
+    st.session_state["_uso_evento_sesion_enviado"] = True
+
 # Nota: La optimización automática de statsmodels se usa siempre (es más precisa)
 
 # ============================================================================
@@ -953,6 +1023,17 @@ if uploaded_file is not None:
                     mime="application/pdf",
                     use_container_width=True
                 )
+
+            registrar_evento_uso(
+                'modelo_ejecutado',
+                st.session_state.get('franquicia_identificador', ''),
+                extra={
+                    'meses_serie': int(len(df)),
+                    'meses_validacion': int(len(test)),
+                    'tipo_archivo': 'xlsx' if _es_archivo_excel(uploaded_file.name or '') else 'csv',
+                    'correccion_pandemia': bool(corregir_2020),
+                },
+            )
 
             st.success("✅ Análisis completado exitosamente!")
             
