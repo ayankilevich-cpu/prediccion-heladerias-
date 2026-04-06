@@ -117,6 +117,30 @@ def _celda_preview_csv(valor, max_len=11):
     return s
 
 
+_COLUMNAS_MES_VENTAS = [
+    'ENERO', 'FEBRERO', 'MARZO', 'ABRIL', 'MAYO', 'JUNIO',
+    'JULIO', 'AGOSTO', 'SEPTIEMBRE', 'OCTUBRE', 'NOVIEMBRE', 'DICIEMBRE',
+]
+
+
+def _es_archivo_excel(nombre_archivo):
+    if not nombre_archivo:
+        return False
+    n = nombre_archivo.lower()
+    return n.endswith('.xlsx') or n.endswith('.xlsm')
+
+
+def cargar_dataframe_desde_upload(uploaded_file, sep, enc):
+    """
+    Lee CSV o Excel (.xlsx / .xlsm) con el mismo esquema de columnas.
+    """
+    uploaded_file.seek(0)
+    nombre = (uploaded_file.name or '').lower()
+    if _es_archivo_excel(uploaded_file.name or ''):
+        return pd.read_excel(uploaded_file, engine='openpyxl', sheet_name=0)
+    return pd.read_csv(uploaded_file, sep=sep, encoding=enc)
+
+
 # Configuración de la página
 st.set_page_config(
     page_title="Predicción de Demanda - Heladerías",
@@ -128,6 +152,20 @@ st.set_page_config(
 st.title("🍦 Predicción de Demanda para Heladerías")
 st.markdown("### Modelo Holt-Winters para Series Temporales")
 st.markdown("---")
+
+
+@st.cache_data(show_spinner=False)
+def generar_plantilla_excel_bytes():
+    """Genera un .xlsx modelo: AÑO + 12 meses, filas de ejemplo para completar."""
+    filas = []
+    for anio in (2022, 2023, 2024, 2025):
+        filas.append({'AÑO': anio, **{m: None for m in _COLUMNAS_MES_VENTAS}})
+    df_plantilla = pd.DataFrame(filas)
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine='openpyxl') as writer:
+        df_plantilla.to_excel(writer, index=False, sheet_name='Ventas')
+    buf.seek(0)
+    return buf.getvalue()
 
 # ============================================================================
 # FUNCIONES DEL MODELO
@@ -561,27 +599,45 @@ st.sidebar.header("⚙️ Configuración")
 
 # Cargar archivo
 st.sidebar.subheader("1. Cargar datos")
+
+plantilla_xlsx = generar_plantilla_excel_bytes()
+st.sidebar.download_button(
+    label="📥 Descargar plantilla Excel (.xlsx)",
+    data=plantilla_xlsx,
+    file_name="plantilla_ventas_heladeria.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    use_container_width=True,
+    help="Modelo con columnas AÑO y ENERO…DICIEMBRE para completar y subir.",
+)
+
 uploaded_file = st.sidebar.file_uploader(
-    "Selecciona el archivo CSV",
-    type=['csv'],
-    help="El archivo debe tener columnas: AÑO, ENERO, FEBRERO, ..., DICIEMBRE"
+    "Subí tu archivo CSV o Excel",
+    type=['csv', 'xlsx', 'xlsm'],
+    help="Mismo formato: primera columna AÑO (o año), luego ENERO … DICIEMBRE con ventas.",
 )
 
 # Parámetros del modelo
 st.sidebar.subheader("2. Parámetros")
 
-separador = st.sidebar.selectbox(
-    "Separador del CSV",
-    [';', ',', '\t'],
-    index=0
-)
+es_excel_cargado = uploaded_file is not None and _es_archivo_excel(uploaded_file.name or '')
 
-encoding = st.sidebar.selectbox(
-    "Codificación",
-    ['latin1', 'utf-8', 'utf-8-sig', 'cp1252'],
-    index=0,
-    help="Use utf-8-si el CSV viene de Excel y la primera columna muestra caracteres raros (BOM)."
-)
+if es_excel_cargado:
+    st.sidebar.caption("Archivo Excel: separador y codificación no se usan.")
+    separador = ';'
+    encoding = 'utf-8'
+else:
+    separador = st.sidebar.selectbox(
+        "Separador del CSV",
+        [';', ',', '\t'],
+        index=0,
+        help="Solo aplica si subís un archivo .csv",
+    )
+    encoding = st.sidebar.selectbox(
+        "Codificación",
+        ['latin1', 'utf-8', 'utf-8-sig', 'cp1252'],
+        index=0,
+        help="Use utf-8-sig si el CSV viene de Excel y la primera columna muestra caracteres raros (BOM).",
+    )
 
 meses_validacion = st.sidebar.number_input(
     "Meses de validación",
@@ -606,7 +662,7 @@ corregir_2020 = st.sidebar.checkbox(
 if uploaded_file is not None:
     # Cargar datos
     try:
-        df_raw = pd.read_csv(uploaded_file, sep=separador, encoding=encoding)
+        df_raw = cargar_dataframe_desde_upload(uploaded_file, separador, encoding)
         df_raw.columns = [_quitar_bom_texto(c) for c in df_raw.columns]
         
         # Mostrar datos cargados
@@ -901,26 +957,32 @@ if uploaded_file is not None:
             
     except Exception as e:
         st.error(f"Error al procesar el archivo: {str(e)}")
-        st.info("Verifica que el formato del CSV sea correcto (AÑO, ENERO, FEBRERO, ..., DICIEMBRE)")
+        st.info(
+            "Verifica el formato: columnas AÑO, ENERO, FEBRERO, …, DICIEMBRE "
+            "(CSV con separador correcto o Excel .xlsx en la primera hoja)."
+        )
 
 else:
     # Mostrar instrucciones cuando no hay archivo
-    st.info("👈 Carga un archivo CSV desde el panel lateral para comenzar")
+    st.info("👈 Cargá un archivo **CSV** o **Excel (.xlsx)** desde el panel lateral, o descargá la plantilla Excel para armar tus datos.")
     
     st.markdown("""
-    ### 📋 Formato esperado del archivo CSV
+    ### 📋 Formato esperado (CSV o Excel, misma estructura)
     
     | AÑO | ENERO | FEBRERO | MARZO | ... | DICIEMBRE |
     |-----|-------|---------|-------|-----|-----------|
     | 2020 | 12345 | 11234 | 10123 | ... | 15678 |
     | 2021 | 13456 | 12345 | 11234 | ... | 16789 |
     
+    - **Excel**: primera hoja con esas columnas en la primera fila. Podés partir de **Descargar plantilla Excel** en el menú lateral.
+    - **CSV**: elegí separador (`;`, `,`) y codificación si hace falta.
+    
     ### 🔧 Parámetros configurables
     
-    - **Separador CSV**: Caracter que separa las columnas (`;`, `,`, etc.)
-    - **Meses de validación**: Cantidad de meses recientes con datos reales para validar el modelo
-    - **Corrección pandemia**: Ajusta valores atípicos de marzo/abril 2020
-    - **Optimización**: Busca automáticamente los mejores hiperparámetros
+    - **Separador / codificación**: solo para archivos CSV
+    - **Meses de validación**: meses recientes con datos reales para validar el modelo
+    - **Corrección pandemia**: ajusta valores atípicos de marzo/abril 2020
+    - **Optimización**: busca automáticamente la mejor combinación de tendencia y estacionalidad
     """)
 
 # Footer
