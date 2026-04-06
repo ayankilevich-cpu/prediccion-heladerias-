@@ -2,6 +2,7 @@
 App de Predicción de Demanda para Heladerías
 =============================================
 Aplicación Streamlit para analizar y predecir ventas usando Holt-Winters.
+Acepta datos en CSV o Excel (.xlsx) con columnas AÑO + meses.
 
 Para ejecutar:
     streamlit run app_prediccion_heladerias.py
