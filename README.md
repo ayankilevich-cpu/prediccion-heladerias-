@@ -160,4 +160,4 @@ El repositorio incluye `data/ejemplo_ventas.csv` con datos sintéticos para prob
 ## Autor
 
 **Alejandro Yankilevich**  
-Data Analyst — [LinkedIn](https://linkedin.com/in/tu-perfil) ← reemplazar con perfil real
+Data Analyst — [LinkedIn](https://linkedin.com/in/aleyanki)
