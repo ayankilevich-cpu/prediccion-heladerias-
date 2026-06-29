@@ -51,3 +51,7 @@ git clone https://github.com/ayankilevich-cpu/prediccion-heladerias-.git
 cd prediccion-heladerias-
 pip install streamlit pandas numpy statsmodels scikit-learn plotly matplotlib fpdf openpyxl
 streamlit run app_prediccion_heladerias.py
+
+## Datos de ejemplo
+
+El repositorio incluye un archivo `data/ejemplo_ventas.csv` con datos sintéticos para que cualquier usuario pueda probar la aplicación sin utilizar información comercial real.
