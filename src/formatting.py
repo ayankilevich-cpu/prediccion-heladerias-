@@ -114,4 +114,4 @@ def celda_csv_preview(valor, max_len: int = 11) -> str:
     s = quitar_bom(str(valor))
     if s.lower() in ("nan", "none", ""):
         return "-"
-    return s[: max_len - 1] + "..." if len(s) > max_len else s
+    return s[: max_len - 3] + "..." if len(s) > max_len else s
