@@ -113,7 +113,105 @@ corregir_2020 = st.sidebar.checkbox(
 # ---------------------------------------------------------------------------
 
 if uploaded_file is None:
-    st.info("👆 Subí un archivo CSV o Excel para comenzar.")
+    st.markdown(
+        """
+        <style>
+        .av-hero {
+            background: linear-gradient(135deg, #EAF8F4 0%, #FEFEFC 100%);
+            border-radius: 16px;
+            padding: 36px 40px;
+            margin-bottom: 28px;
+            border: 1px solid #D5EFE7;
+        }
+        .av-hero h2 {
+            color: #3A2B22;
+            font-size: 1.6rem;
+            margin: 0 0 8px 0;
+            font-weight: 700;
+        }
+        .av-steps {
+            display: flex;
+            gap: 16px;
+            margin: 28px 0 8px 0;
+        }
+        .av-step {
+            flex: 1;
+            background: #FEFEFC;
+            border: 1px solid #D5EFE7;
+            border-radius: 12px;
+            padding: 20px 18px;
+            text-align: center;
+        }
+        .av-step .av-num {
+            display: inline-block;
+            width: 28px;
+            height: 28px;
+            line-height: 28px;
+            border-radius: 50%;
+            background: #3FBF9F;
+            color: white;
+            font-weight: 700;
+            font-size: 0.85rem;
+            margin-bottom: 10px;
+        }
+        .av-step .av-icon {
+            font-size: 1.8rem;
+            display: block;
+            margin-bottom: 6px;
+        }
+        .av-step .av-title {
+            color: #3A2B22;
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+        .av-benefits {
+            margin-top: 24px;
+            padding-top: 20px;
+            border-top: 1px solid #D5EFE7;
+        }
+        .av-benefits .av-benefits-title {
+            color: #3A2B22;
+            font-weight: 600;
+            margin-bottom: 10px;
+            font-size: 0.95rem;
+        }
+        .av-benefit-item {
+            color: #6B4730;
+            font-size: 0.92rem;
+            margin-bottom: 6px;
+        }
+        .av-benefit-item b { color: #3A2B22; }
+        </style>
+
+        <div class="av-hero">
+            <h2>Predecí, planificá y maximizá la rentabilidad de tu heladería.</h2>
+            <div class="av-steps">
+                <div class="av-step">
+                    <span class="av-num">1</span>
+                    <span class="av-icon">📥</span>
+                    <div class="av-title">Descargá la plantilla</div>
+                </div>
+                <div class="av-step">
+                    <span class="av-num">2</span>
+                    <span class="av-icon">📝</span>
+                    <div class="av-title">Completá tus ventas mensuales</div>
+                </div>
+                <div class="av-step">
+                    <span class="av-num">3</span>
+                    <span class="av-icon">🔮</span>
+                    <div class="av-title">Subí el archivo y mirá la predicción</div>
+                </div>
+            </div>
+            <div class="av-benefits">
+                <div class="av-benefits-title">¿Qué vas a obtener?</div>
+                <div class="av-benefit-item">✓ <b>Predicción</b> de los próximos 12 meses de demanda</div>
+                <div class="av-benefit-item">✓ El <b>margen de error</b> del modelo, para saber qué tan confiable es</div>
+                <div class="av-benefit-item">✓ Un <b>informe en PDF</b> listo para compartir con tu equipo</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     st.stop()
 
 # 1. Carga
