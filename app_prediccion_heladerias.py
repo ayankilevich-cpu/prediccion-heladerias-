@@ -24,6 +24,8 @@ from src import (
     formato_numero,
     generar_pdf,
     generar_plantilla_excel,
+    mes_anio_es,
+    etiquetas_eje_fecha_es,
     transformar_a_serie,
     validar_dataframe,
 )
@@ -144,6 +146,8 @@ fig_serie = px.line(
     labels={"fecha": "Fecha", "ventas": "Ventas"},
 )
 fig_serie.update_traces(line_color="#1f77b4", line_width=2)
+tickvals, ticktext = etiquetas_eje_fecha_es(df_serie["fecha"])
+fig_serie.update_xaxes(tickvals=tickvals, ticktext=ticktext)
 fig_serie.update_layout(hovermode="x unified")
 st.plotly_chart(fig_serie, use_container_width=True)
 
@@ -171,8 +175,8 @@ metricas = resultado.metricas
 predicciones_val = resultado.predicciones_validacion
 df_futuro = resultado.df_futuro
 
-periodo_inicio = test["fecha"].min().strftime("%b %Y")
-periodo_fin = test["fecha"].max().strftime("%b %Y")
+periodo_inicio = mes_anio_es(test["fecha"].min(), abreviado=True)
+periodo_fin = mes_anio_es(test["fecha"].max(), abreviado=True)
 
 st.info(
     f"📊 Validación: últimos **{len(test)} meses** ({periodo_inicio} - {periodo_fin}) | "
@@ -207,7 +211,7 @@ comparativa = test[["fecha", "ventas"]].copy()
 comparativa["prediccion"] = predicciones_val.values
 comparativa["error"] = abs(comparativa["ventas"] - comparativa["prediccion"])
 comparativa["error_pct"] = comparativa["error"] / comparativa["ventas"] * 100
-comparativa["mes"] = comparativa["fecha"].dt.strftime("%b %Y")
+comparativa["mes"] = comparativa["fecha"].apply(lambda f: mes_anio_es(f, abreviado=True))
 
 diferencia = total_real - total_predicho
 diferencia_pct = (diferencia / total_real * 100) if total_real else 0
@@ -276,6 +280,10 @@ fig_fut.add_trace(
     row=1, col=2,
 )
 fig_fut.update_layout(height=400, showlegend=True)
+tickvals_hist, ticktext_hist = etiquetas_eje_fecha_es(
+    pd.concat([df_historico["fecha"], df_futuro["fecha"]])
+)
+fig_fut.update_xaxes(tickvals=tickvals_hist, ticktext=ticktext_hist, row=1, col=1)
 st.plotly_chart(fig_fut, use_container_width=True)
 
 c1, c2, c3 = st.columns(3)

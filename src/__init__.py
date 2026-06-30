@@ -5,7 +5,7 @@ from src.loader import cargar_dataframe, transformar_a_serie, corregir_pandemia,
 from src.validator import validar_dataframe
 from src.model import ejecutar_pipeline
 from src.report import generar_pdf
-from src.formatting import formato_numero, fecha_a_texto_es
+from src.formatting import formato_numero, fecha_a_texto_es, mes_anio_es, etiquetas_eje_fecha_es
 
 __all__ = [
     "cargar_dataframe",
@@ -17,4 +17,6 @@ __all__ = [
     "generar_pdf",
     "formato_numero",
     "fecha_a_texto_es",
+    "mes_anio_es",
+    "etiquetas_eje_fecha_es",
 ]

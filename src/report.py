@@ -26,6 +26,7 @@ from src.formatting import (
     encabezado_columna_pdf,
     fecha_a_texto_es,
     formato_numero,
+    mes_anio_es,
     texto_seguro_pdf,
     COLUMNAS_MES,
 )
@@ -45,6 +46,11 @@ def _fig_a_png(fig) -> io.BytesIO:
     return buf
 
 
+def _formateador_eje_mes_anio(num, pos=None):
+    """Formatea números de fecha de matplotlib como 'ene 2024' en español."""
+    return mes_anio_es(mdates.num2date(num), abreviado=True)
+
+
 def grafico_serie(df: pd.DataFrame) -> io.BytesIO:
     """Gráfico de línea de la serie temporal histórica."""
     fig, ax = plt.subplots(figsize=(10, 4))
@@ -52,7 +58,7 @@ def grafico_serie(df: pd.DataFrame) -> io.BytesIO:
     ax.set_title("Ventas Históricas", fontsize=13, fontweight="bold", color="#2c3e50")
     ax.set_xlabel("Fecha", fontsize=10)
     ax.set_ylabel("Ventas", fontsize=10)
-    ax.xaxis.set_major_formatter(mdates.DateFormatter("%b %Y"))
+    ax.xaxis.set_major_formatter(mticker.FuncFormatter(_formateador_eje_mes_anio))
     ax.xaxis.set_major_locator(mdates.AutoDateLocator())
     ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: formato_numero(x, 0)))
     ax.grid(True, alpha=0.3)
@@ -88,7 +94,7 @@ def grafico_futuro(df_historico: pd.DataFrame, df_futuro: pd.DataFrame) -> io.By
     ax1.plot(df_futuro["fecha"], df_futuro["prediccion"],
              color="#e74c3c", linewidth=1.5, linestyle="--", label="Predicción")
     ax1.set_title("Serie Completa", fontsize=11, fontweight="bold", color="#2c3e50")
-    ax1.xaxis.set_major_formatter(mdates.DateFormatter("%b %Y"))
+    ax1.xaxis.set_major_formatter(mticker.FuncFormatter(_formateador_eje_mes_anio))
     ax1.xaxis.set_major_locator(mdates.AutoDateLocator())
     ax1.yaxis.set_major_formatter(mticker.FuncFormatter(lambda v, _: formato_numero(v, 0)))
     ax1.legend(fontsize=8)
@@ -224,8 +230,8 @@ def generar_pdf(
     Returns:
         Bytes del PDF generado.
     """
-    periodo_inicio = comparativa["fecha"].min().strftime("%b %Y")
-    periodo_fin = comparativa["fecha"].max().strftime("%b %Y")
+    periodo_inicio = mes_anio_es(comparativa["fecha"].min(), abreviado=True)
+    periodo_fin = mes_anio_es(comparativa["fecha"].max(), abreviado=True)
     diferencia_total = total_real - total_predicho
     diferencia_pct = (diferencia_total / total_real * 100) if total_real else 0
     error_pct = (metricas.error_absoluto_total / total_real * 100) if total_real else 0

@@ -22,6 +22,8 @@ import pandas as pd
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 from statsmodels.tsa.holtwinters import ExponentialSmoothing, HoltWintersResults
 
+from src.formatting import mes_anio_es
+
 logger = logging.getLogger(__name__)
 
 # Combinaciones de parámetros a evaluar en la selección automática
@@ -223,7 +225,7 @@ def generar_predicciones_futuras(
         "fecha": fechas_futuras,
         "prediccion": pred.round(1).values,
     })
-    df_futuro["mes"] = df_futuro["fecha"].dt.strftime("%B %Y")
+    df_futuro["mes"] = df_futuro["fecha"].apply(lambda f: mes_anio_es(f, abreviado=True))
 
     return df_futuro
 

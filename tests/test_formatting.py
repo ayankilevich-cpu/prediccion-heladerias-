@@ -13,6 +13,7 @@ from src.formatting import (
     encabezado_columna_pdf,
     fecha_a_texto_es,
     formato_numero,
+    mes_anio_es,
     quitar_bom,
     texto_seguro_pdf,
 )
@@ -101,6 +102,19 @@ class TestFechaATextoEs:
 
     def test_nan_devuelve_vacio(self):
         assert fecha_a_texto_es(float("nan")) == ""
+
+
+class TestMesAnioEs:
+    """mes_anio_es formatea fechas en español con o sin abreviatura."""
+
+    def test_nombre_completo(self):
+        assert mes_anio_es(pd.Timestamp("2024-03-01")) == "marzo 2024"
+
+    def test_abreviado(self):
+        assert mes_anio_es(pd.Timestamp("2024-03-01"), abreviado=True) == "mar 2024"
+
+    def test_diciembre_abreviado(self):
+        assert mes_anio_es(pd.Timestamp("2025-12-01"), abreviado=True) == "dic 2025"
 
 
 class TestEncabezadoColumnaPDF:

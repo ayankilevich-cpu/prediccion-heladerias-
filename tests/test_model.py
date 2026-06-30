@@ -167,6 +167,12 @@ class TestGenerarPrediccionesFuturas:
         df = generar_predicciones_futuras(serie_temporal_ok, "additive", "additive")
         assert df["mes"].notna().all()
 
+    def test_columna_mes_en_espanol(self, serie_temporal_ok):
+        df = generar_predicciones_futuras(serie_temporal_ok, "additive", "additive")
+        assert df["mes"].iloc[0].startswith(("ene ", "feb ", "mar ", "abr ", "may ", "jun ",
+                                               "jul ", "ago ", "sep ", "oct ", "nov ", "dic "))
+        assert "January" not in df["mes"].str.cat()
+
 
 class TestEjecutarPipeline:
     """ejecutar_pipeline es el test de integración — orquesta todo el flujo."""
