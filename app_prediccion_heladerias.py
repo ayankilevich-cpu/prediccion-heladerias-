@@ -1,13 +1,13 @@
 """
-app.py
-------
+app_prediccion_heladerias.py
+----------------------------
 Interfaz de usuario Streamlit para la app de predicción de heladerías.
 
 Este archivo SOLO maneja la UI: layout, inputs, outputs visuales.
 Toda la lógica de negocio vive en src/.
 
 Para ejecutar:
-    streamlit run app.py
+    streamlit run app_prediccion_heladerias.py
 """
 
 import pandas as pd
@@ -20,7 +20,6 @@ from src import (
     cargar_dataframe,
     corregir_pandemia,
     ejecutar_pipeline,
-    fecha_a_texto_es,
     formato_numero,
     generar_pdf,
     generar_plantilla_excel,
@@ -35,13 +34,13 @@ from src import (
 # ---------------------------------------------------------------------------
 
 st.set_page_config(
-    page_title="Predicción de Demanda - Heladerías",
+    page_title="AGP Blema | Estimación de la Demanda",
     page_icon="🍦",
     layout="wide",
 )
 
-st.title("🍦 Predicción de Demanda para Heladerías")
-st.markdown("### Modelo Holt-Winters para Series Temporales")
+st.title("🍦 AGP Blema")
+st.markdown("### Estimación de la Demanda para Heladerías")
 st.markdown("---")
 
 
@@ -145,7 +144,7 @@ fig_serie = px.line(
     title="Ventas Históricas",
     labels={"fecha": "Fecha", "ventas": "Ventas"},
 )
-fig_serie.update_traces(line_color="#1f77b4", line_width=2)
+fig_serie.update_traces(line_color="#3FBF9F", line_width=2)
 tickvals, ticktext = etiquetas_eje_fecha_es(df_serie["fecha"])
 fig_serie.update_xaxes(tickvals=tickvals, ticktext=ticktext)
 fig_serie.update_layout(hovermode="x unified")
@@ -225,9 +224,9 @@ c4.metric("Diferencia %", f"{diferencia_pct:.2f}%".replace(".", ","))
 
 fig_comp = go.Figure()
 fig_comp.add_trace(go.Bar(name="Real", x=comparativa["mes"], y=comparativa["ventas"],
-                          marker_color="#2ecc71"))
+                          marker_color="#6B4730"))
 fig_comp.add_trace(go.Bar(name="Predicción", x=comparativa["mes"], y=comparativa["prediccion"],
-                          marker_color="#3498db"))
+                          marker_color="#3FBF9F"))
 fig_comp.update_layout(
     title="Comparación: Ventas Reales vs Predicción",
     barmode="group",
@@ -266,17 +265,17 @@ df_historico = df_serie.dropna(subset=["ventas"])
 
 fig_fut.add_trace(
     go.Scatter(x=df_historico["fecha"], y=df_historico["ventas"],
-               name="Histórico", line=dict(color="#2ecc71")),
+               name="Histórico", line=dict(color="#6B4730")),
     row=1, col=1,
 )
 fig_fut.add_trace(
     go.Scatter(x=df_futuro["fecha"], y=df_futuro["prediccion"],
-               name="Predicción", line=dict(color="#e74c3c", dash="dash")),
+               name="Predicción", line=dict(color="#D97757", dash="dash")),
     row=1, col=1,
 )
 fig_fut.add_trace(
     go.Bar(x=df_futuro["mes"], y=df_futuro["prediccion"],
-           name="Predicción Mensual", marker_color="#3498db"),
+           name="Predicción Mensual", marker_color="#3FBF9F"),
     row=1, col=2,
 )
 fig_fut.update_layout(height=400, showlegend=True)
