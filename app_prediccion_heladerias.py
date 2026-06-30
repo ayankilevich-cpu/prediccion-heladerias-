@@ -10,6 +10,8 @@ Para ejecutar:
     streamlit run app_prediccion_heladerias.py
 """
 
+import os
+
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -29,18 +31,24 @@ from src import (
     validar_dataframe,
 )
 
+_LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "logo_agp_blema.png")
+
 # ---------------------------------------------------------------------------
 # Configuración de la página
 # ---------------------------------------------------------------------------
 
 st.set_page_config(
     page_title="AGP Blema | Estimación de la Demanda",
-    page_icon="🍦",
+    page_icon=_LOGO_PATH,
     layout="wide",
 )
 
-st.title("🍦 AGP Blema")
-st.markdown("### Estimación de la Demanda para Heladerías")
+col_logo, col_titulo = st.columns([1, 5], vertical_alignment="center")
+with col_logo:
+    st.image(_LOGO_PATH, width=110)
+with col_titulo:
+    st.markdown("## AGP Blema")
+    st.markdown("### Estimación de la Demanda para Heladerías")
 st.markdown("---")
 
 
@@ -48,6 +56,8 @@ st.markdown("---")
 # Sidebar: configuración
 # ---------------------------------------------------------------------------
 
+st.sidebar.image(_LOGO_PATH, width=140)
+st.sidebar.markdown("---")
 st.sidebar.header("⚙️ Configuración")
 
 # --- Plantilla descargable ---
