@@ -151,6 +151,15 @@ Los tests verifican, entre otras cosas:
 
 ---
 
+## Despliegue en Streamlit Cloud
+
+1. Conectá el repo y usá `app_prediccion_heladerias.py` como entrypoint.
+2. En **Advanced settings**, elegí **Python 3.12** o **3.13** (no uses 3.14: las versiones fijadas en `requirements.txt` no son compatibles).
+3. Si la app falla con `ModuleNotFoundError: plotly`, revisá los logs de build: suele indicar que `pip install` falló por incompatibilidad de versión de Python.
+4. Tras cambios en `requirements.txt`, usá **Reboot app** para forzar reinstalación de dependencias.
+
+---
+
 ## Datos de ejemplo
 
 El repositorio incluye `data/ejemplo_ventas.csv` con datos sintéticos para probar la aplicación sin necesidad de datos reales.
