@@ -76,6 +76,14 @@ prediccion_heladerias/
 
 ---
 
+## Ejemplo de informe generado
+
+La app exporta un informe PDF completo (5 páginas) con datos cargados, serie histórica, métricas de validación y predicciones futuras. Ejemplo generado con datos sintéticos:
+
+![Ejemplo de predicciones futuras](docs/screenshots/informe_predicciones_ejemplo.png)
+
+---
+
 ## Formato esperado del archivo
 
 El archivo debe tener una columna de año y una columna por mes (en español, mayúsculas):
@@ -151,15 +159,6 @@ Los tests verifican, entre otras cosas:
 
 ---
 
-## Despliegue en Streamlit Cloud
-
-1. Conectá el repo y usá `app_prediccion_heladerias.py` como entrypoint.
-2. En **Advanced settings**, elegí **Python 3.12** o **3.13** (no uses 3.14: las versiones fijadas en `requirements.txt` no son compatibles).
-3. Si la app falla con `ModuleNotFoundError: plotly`, revisá los logs de build: suele indicar que `pip install` falló por incompatibilidad de versión de Python.
-4. Tras cambios en `requirements.txt`, usá **Reboot app** para forzar reinstalación de dependencias.
-
----
-
 ## Datos de ejemplo
 
 El repositorio incluye `data/ejemplo_ventas.csv` con datos sintéticos para probar la aplicación sin necesidad de datos reales.
@@ -169,4 +168,4 @@ El repositorio incluye `data/ejemplo_ventas.csv` con datos sintéticos para prob
 ## Autor
 
 **Alejandro Yankilevich**  
-Data Analyst — [LinkedIn](https://linkedin.com/in/aleyanki)
+Data Analyst — [LinkedIn](https://linkedin.com/in/tu-perfil) ← reemplazar con perfil real
