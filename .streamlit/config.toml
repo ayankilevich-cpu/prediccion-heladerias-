@@ -1,9 +1,10 @@
 [theme]
+# Paleta de marca AGP Blema (heladería): teal, marrón, naranja sobre fondo claro.
 primaryColor = "#3FBF9F"
-backgroundColor = "#FEFEFC"
-secondaryBackgroundColor = "#EAF8F4"
+backgroundColor = "#F6F8F7"
+secondaryBackgroundColor = "#FFFFFF"
 textColor = "#3A2B22"
 font = "sans serif"
 
 [server]
-headless = true
+enableStaticServing = true
