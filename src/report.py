@@ -31,6 +31,19 @@ from src.formatting import (
     COLUMNAS_MES,
 )
 
+# ---------------------------------------------------------------------------
+# Paleta de marca (AGP Blema) - misma línea de colores que la app en vivo
+# ---------------------------------------------------------------------------
+
+TEAL_HEX = "#3FBF9F"        # predicción / acento principal
+BROWN_HEX = "#6B4730"       # ventas reales / histórico
+ORANGE_HEX = "#D97757"      # predicción futura (línea punteada)
+
+TEXT_RGB = (58, 43, 34)         # marrón oscuro, texto de títulos
+MUTED_RGB = (140, 123, 110)     # marrón grisáceo, texto secundario
+HEADER_FILL_RGB = (46, 155, 128)  # teal oscuro, encabezados de tabla
+SECTION_FILL_RGB = (234, 248, 244)  # verde menta claro, fondo de secciones
+
 
 # ---------------------------------------------------------------------------
 # Gráficos matplotlib -> bytes PNG
@@ -54,7 +67,7 @@ def _formateador_eje_mes_anio(num, pos=None):
 def grafico_serie(df: pd.DataFrame) -> io.BytesIO:
     """Gráfico de línea de la serie temporal histórica."""
     fig, ax = plt.subplots(figsize=(10, 4))
-    ax.plot(df["fecha"], df["ventas"], color="#1f77b4", linewidth=1.8)
+    ax.plot(df["fecha"], df["ventas"], color=TEAL_HEX, linewidth=1.8)
     ax.set_title("Ventas Históricas", fontsize=13, fontweight="bold", color="#2c3e50")
     ax.set_xlabel("Fecha", fontsize=10)
     ax.set_ylabel("Ventas", fontsize=10)
@@ -72,8 +85,8 @@ def grafico_comparacion(comparativa: pd.DataFrame) -> io.BytesIO:
     fig, ax = plt.subplots(figsize=(10, 4.5))
     x = np.arange(len(comparativa))
     ancho = 0.35
-    ax.bar(x - ancho / 2, comparativa["ventas"], ancho, label="Real", color="#2ecc71")
-    ax.bar(x + ancho / 2, comparativa["prediccion"], ancho, label="Predicción", color="#3498db")
+    ax.bar(x - ancho / 2, comparativa["ventas"], ancho, label="Real", color=BROWN_HEX)
+    ax.bar(x + ancho / 2, comparativa["prediccion"], ancho, label="Predicción", color=TEAL_HEX)
     ax.set_title("Comparación: Ventas Reales vs Predicción", fontsize=13,
                  fontweight="bold", color="#2c3e50")
     ax.set_xticks(x)
@@ -90,9 +103,9 @@ def grafico_futuro(df_historico: pd.DataFrame, df_futuro: pd.DataFrame) -> io.By
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4.5))
 
     ax1.plot(df_historico["fecha"], df_historico["ventas"],
-             color="#2ecc71", linewidth=1.5, label="Histórico")
+             color=BROWN_HEX, linewidth=1.5, label="Histórico")
     ax1.plot(df_futuro["fecha"], df_futuro["prediccion"],
-             color="#e74c3c", linewidth=1.5, linestyle="--", label="Predicción")
+             color=ORANGE_HEX, linewidth=1.5, linestyle="--", label="Predicción")
     ax1.set_title("Serie Completa", fontsize=11, fontweight="bold", color="#2c3e50")
     ax1.xaxis.set_major_formatter(mticker.FuncFormatter(_formateador_eje_mes_anio))
     ax1.xaxis.set_major_locator(mdates.AutoDateLocator())
@@ -100,7 +113,7 @@ def grafico_futuro(df_historico: pd.DataFrame, df_futuro: pd.DataFrame) -> io.By
     ax1.legend(fontsize=8)
     ax1.grid(True, alpha=0.3)
 
-    ax2.bar(range(len(df_futuro)), df_futuro["prediccion"], color="#3498db")
+    ax2.bar(range(len(df_futuro)), df_futuro["prediccion"], color=TEAL_HEX)
     ax2.set_title("Predicciones Futuras", fontsize=11, fontweight="bold", color="#2c3e50")
     ax2.set_xticks(range(len(df_futuro)))
     ax2.set_xticklabels(df_futuro["mes"], rotation=45, ha="right", fontsize=7)
@@ -121,7 +134,7 @@ class _InformePDF(FPDF):
 
     def header(self):
         self.set_font("Helvetica", "B", 10)
-        self.set_text_color(100, 100, 100)
+        self.set_text_color(*MUTED_RGB)
         self.cell(0, 8, "Informe de Predicción de Demanda - Heladerías", 0, 1, "R")
         self.line(10, self.get_y(), 200, self.get_y())
         self.ln(4)
@@ -129,35 +142,35 @@ class _InformePDF(FPDF):
     def footer(self):
         self.set_y(-15)
         self.set_font("Helvetica", "I", 8)
-        self.set_text_color(128, 128, 128)
+        self.set_text_color(*MUTED_RGB)
         self.cell(0, 10, f"Página {self.page_no()}/{{nb}}", 0, 0, "C")
 
     def titulo_seccion(self, texto: str):
         self.set_font("Helvetica", "B", 13)
-        self.set_text_color(44, 62, 80)
-        self.set_fill_color(236, 240, 241)
+        self.set_text_color(*TEXT_RGB)
+        self.set_fill_color(*SECTION_FILL_RGB)
         self.cell(0, 10, texto_seguro_pdf(texto), 0, 1, "L", fill=True)
         self.ln(3)
 
     def subtitulo(self, texto: str):
         self.set_font("Helvetica", "B", 11)
-        self.set_text_color(52, 73, 94)
+        self.set_text_color(*HEADER_FILL_RGB)
         self.cell(0, 8, texto_seguro_pdf(texto), 0, 1, "L")
         self.ln(1)
 
     def texto_normal(self, texto: str):
         self.set_font("Helvetica", "", 10)
-        self.set_text_color(0, 0, 0)
+        self.set_text_color(*TEXT_RGB)
         self.multi_cell(0, 6, texto_seguro_pdf(texto))
         self.ln(2)
 
     def metrica(self, nombre: str, valor: str, x: float, y: float, ancho: float = 45):
         self.set_xy(x, y)
         self.set_font("Helvetica", "", 8)
-        self.set_text_color(100, 100, 100)
+        self.set_text_color(*MUTED_RGB)
         self.cell(ancho, 5, texto_seguro_pdf(nombre), 0, 2, "C")
         self.set_font("Helvetica", "B", 12)
-        self.set_text_color(44, 62, 80)
+        self.set_text_color(*TEXT_RGB)
         self.cell(ancho, 7, texto_seguro_pdf(str(valor)), 0, 2, "C")
 
     def tabla(self, encabezados: list, filas: list, anchos: Optional[list] = None,
@@ -167,7 +180,7 @@ class _InformePDF(FPDF):
             anchos = [ancho_total / len(encabezados)] * len(encabezados)
 
         self.set_font("Helvetica", "B", tam_enc)
-        self.set_fill_color(52, 73, 94)
+        self.set_fill_color(*HEADER_FILL_RGB)
         self.set_text_color(255, 255, 255)
         for i, enc in enumerate(encabezados):
             self.cell(anchos[i], alto_enc, texto_seguro_pdf(str(enc)), 1, 0, "C", fill=True)
@@ -244,13 +257,14 @@ def generar_pdf(
     pdf.add_page()
     pdf.ln(20)
     pdf.set_font("Helvetica", "B", 24)
-    pdf.set_text_color(44, 62, 80)
+    pdf.set_text_color(*TEXT_RGB)
     pdf.cell(0, 15, "Informe de Predicción de Demanda", 0, 1, "C")
     pdf.set_font("Helvetica", "", 16)
-    pdf.set_text_color(100, 100, 100)
+    pdf.set_text_color(*HEADER_FILL_RGB)
     pdf.cell(0, 10, "Modelo Holt-Winters para Heladerías", 0, 1, "C")
     pdf.ln(10)
     pdf.set_font("Helvetica", "", 11)
+    pdf.set_text_color(*MUTED_RGB)
     pdf.cell(0, 8, f"Fecha del informe: {datetime.now().strftime('%d/%m/%Y %H:%M')}", 0, 1, "C")
     rango = f"{fecha_a_texto_es(df_serie['fecha'].min())} a {fecha_a_texto_es(df_serie['fecha'].max())}"
     pdf.cell(0, 8, f"Rango de datos: {rango}", 0, 1, "C")

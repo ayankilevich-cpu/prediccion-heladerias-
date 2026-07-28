@@ -10,11 +10,12 @@ Para ejecutar:
     streamlit run app_prediccion_heladerias.py
 """
 
+import hashlib
 import os
 
 import pandas as pd
-import plotly.express as px
 import plotly.graph_objects as go
+import plotly.express as px
 from plotly.subplots import make_subplots
 import streamlit as st
 
@@ -34,6 +35,23 @@ from src import (
 _LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "logo_agp_blema.png")
 
 # ---------------------------------------------------------------------------
+# Paleta de marca (AGP Blema)
+# ---------------------------------------------------------------------------
+
+TEAL = "#3FBF9F"
+TEAL_DARK = "#2E9B80"
+TEAL_SOFT = "#EAF8F4"
+BROWN = "#6B4730"
+ORANGE = "#D97757"
+BG = "#F6F8F7"
+CARD = "#FFFFFF"
+BORDER = "#E3EFEA"
+TEXT = "#3A2B22"
+MUTED = "#8C7B6E"
+GREEN_OK = "#1E9E6D"
+RED_BAD = "#C0392B"
+
+# ---------------------------------------------------------------------------
 # Configuración de la página
 # ---------------------------------------------------------------------------
 
@@ -43,20 +61,304 @@ st.set_page_config(
     layout="wide",
 )
 
-col_logo, col_titulo = st.columns([1, 5], vertical_alignment="center")
+
+# ---------------------------------------------------------------------------
+# CSS global: look de dashboard (tarjetas redondeadas, tabs tipo pill, etc.)
+# ---------------------------------------------------------------------------
+
+st.markdown(
+    f"""
+    <style>
+    .stApp {{
+        background-color: {BG};
+    }}
+
+    /* --- Topbar --- */
+    .agp-topbar {{
+        background: {CARD};
+        border: 1px solid {BORDER};
+        border-radius: 20px;
+        padding: 18px 28px;
+        margin-bottom: 22px;
+        box-shadow: 0 2px 10px rgba(58, 43, 34, 0.05);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 12px;
+    }}
+    .agp-topbar-title h1 {{
+        font-size: 1.35rem;
+        font-weight: 700;
+        color: {TEXT};
+        margin: 0;
+    }}
+    .agp-topbar-title p {{
+        font-size: 0.92rem;
+        color: {MUTED};
+        margin: 2px 0 0 0;
+    }}
+    .agp-badge {{
+        background: {TEAL_SOFT};
+        color: {TEAL_DARK};
+        font-weight: 600;
+        font-size: 0.82rem;
+        padding: 6px 16px;
+        border-radius: 999px;
+        border: 1px solid {BORDER};
+        white-space: nowrap;
+    }}
+
+    /* --- Tarjetas KPI --- */
+    .kpi-grid {{
+        display: flex;
+        gap: 14px;
+        flex-wrap: wrap;
+        margin-bottom: 18px;
+    }}
+    .kpi-card {{
+        flex: 1;
+        min-width: 160px;
+        background: {CARD};
+        border: 1px solid {BORDER};
+        border-radius: 18px;
+        padding: 16px 20px;
+        box-shadow: 0 2px 10px rgba(58, 43, 34, 0.04);
+    }}
+    .kpi-card .kpi-label {{
+        font-size: 0.78rem;
+        color: {MUTED};
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+        margin-bottom: 8px;
+    }}
+    .kpi-card .kpi-value {{
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: {TEXT};
+        line-height: 1.2;
+    }}
+    .kpi-delta {{
+        display: inline-block;
+        margin-top: 8px;
+        padding: 2px 10px;
+        border-radius: 999px;
+        font-size: 0.75rem;
+        font-weight: 700;
+    }}
+    .kpi-delta.pos {{ background: #E4F8EF; color: {GREEN_OK}; }}
+    .kpi-delta.neg {{ background: #FDEDEA; color: {RED_BAD}; }}
+    .kpi-delta.neutral {{ background: {TEAL_SOFT}; color: {TEAL_DARK}; }}
+
+    /* --- Secciones en tarjeta --- */
+    .agp-section {{
+        background: {CARD};
+        border: 1px solid {BORDER};
+        border-radius: 18px;
+        padding: 22px 24px;
+        margin-bottom: 18px;
+        box-shadow: 0 2px 10px rgba(58, 43, 34, 0.04);
+    }}
+    .agp-section h3 {{
+        margin-top: 0;
+        color: {TEXT};
+        font-size: 1.05rem;
+    }}
+
+    /* --- Sidebar --- */
+    section[data-testid="stSidebar"] {{
+        background: {CARD};
+        border-right: 1px solid {BORDER};
+    }}
+
+    /* --- Botones --- */
+    .stButton > button, .stDownloadButton > button {{
+        border-radius: 999px !important;
+        font-weight: 600 !important;
+    }}
+    .stButton > button[kind="primary"] {{
+        background-color: {TEAL} !important;
+        border-color: {TEAL} !important;
+    }}
+    .stButton > button[kind="primary"]:hover {{
+        background-color: {TEAL_DARK} !important;
+        border-color: {TEAL_DARK} !important;
+    }}
+
+    /* --- Tabs tipo pill --- */
+    div[data-baseweb="tab-list"] {{
+        gap: 6px;
+        background: {TEAL_SOFT};
+        padding: 6px;
+        border-radius: 999px;
+        margin-bottom: 18px;
+    }}
+    button[data-baseweb="tab"] {{
+        border-radius: 999px !important;
+        padding: 8px 20px !important;
+        color: {MUTED} !important;
+    }}
+    button[data-baseweb="tab"][aria-selected="true"] {{
+        background: {TEAL} !important;
+        color: white !important;
+    }}
+    div[data-baseweb="tab-highlight"] {{ display: none; }}
+    div[data-baseweb="tab-border"] {{ display: none; }}
+
+    /* --- Tablas y dataframes --- */
+    [data-testid="stDataFrame"] {{
+        border-radius: 14px;
+        overflow: hidden;
+        border: 1px solid {BORDER};
+    }}
+
+    /* --- Hero (estado sin archivo) --- */
+    .av-hero {{
+        background: linear-gradient(135deg, {TEAL_SOFT} 0%, #FEFEFC 100%);
+        border-radius: 20px;
+        padding: 36px 40px;
+        margin-bottom: 28px;
+        border: 1px solid {BORDER};
+    }}
+    .av-hero h2 {{
+        color: {TEXT};
+        font-size: 1.6rem;
+        margin: 0 0 8px 0;
+        font-weight: 700;
+    }}
+    .av-steps {{
+        display: flex;
+        gap: 16px;
+        margin: 28px 0 8px 0;
+        flex-wrap: wrap;
+    }}
+    .av-step {{
+        flex: 1;
+        min-width: 180px;
+        background: {CARD};
+        border: 1px solid {BORDER};
+        border-radius: 14px;
+        padding: 20px 18px;
+        text-align: center;
+    }}
+    .av-step .av-num {{
+        display: inline-block;
+        width: 28px;
+        height: 28px;
+        line-height: 28px;
+        border-radius: 50%;
+        background: {TEAL};
+        color: white;
+        font-weight: 700;
+        font-size: 0.85rem;
+        margin-bottom: 10px;
+    }}
+    .av-step .av-icon {{
+        font-size: 1.8rem;
+        display: block;
+        margin-bottom: 6px;
+    }}
+    .av-step .av-title {{
+        color: {TEXT};
+        font-weight: 600;
+        font-size: 0.95rem;
+    }}
+    .av-benefits {{
+        margin-top: 24px;
+        padding-top: 20px;
+        border-top: 1px solid {BORDER};
+    }}
+    .av-benefits .av-benefits-title {{
+        color: {TEXT};
+        font-weight: 600;
+        margin-bottom: 10px;
+        font-size: 0.95rem;
+    }}
+    .av-benefit-item {{
+        color: {MUTED};
+        font-size: 0.92rem;
+        margin-bottom: 6px;
+    }}
+    .av-benefit-item b {{ color: {TEXT}; }}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+# ---------------------------------------------------------------------------
+# Helpers de UI
+# ---------------------------------------------------------------------------
+
+def kpi_row(items: list[dict]) -> None:
+    """Renderiza una fila de tarjetas KPI estilo dashboard.
+
+    items: lista de dicts con keys: label, value, delta (opcional), tono (pos/neg/neutral).
+    """
+    cards_html = []
+    for item in items:
+        delta_html = ""
+        if item.get("delta"):
+            tono = item.get("tono", "neutral")
+            delta_html = f'<span class="kpi-delta {tono}">{item["delta"]}</span><br/>'
+        cards_html.append(
+            f"""
+            <div class="kpi-card">
+                <div class="kpi-label">{item['label']}</div>
+                <div class="kpi-value">{item['value']}</div>
+                {delta_html}
+            </div>
+            """
+        )
+    st.markdown(f'<div class="kpi-grid">{"".join(cards_html)}</div>', unsafe_allow_html=True)
+
+
+def aplicar_tema_plotly(fig, height: int | None = None):
+    """Aplica un tema visual consistente (fuente, colores, grillas) a un gráfico Plotly."""
+    fig.update_layout(
+        font=dict(family="-apple-system, Segoe UI, Helvetica, Arial, sans-serif", color=TEXT, size=13),
+        plot_bgcolor=CARD,
+        paper_bgcolor="rgba(0,0,0,0)",
+        margin=dict(t=55, l=10, r=10, b=10),
+        legend=dict(orientation="h", yanchor="bottom", y=1.05, xanchor="right", x=1),
+        title_font=dict(size=15, color=TEXT),
+        colorway=[TEAL, BROWN, ORANGE],
+        hoverlabel=dict(bgcolor=CARD, font_color=TEXT, bordercolor=BORDER),
+    )
+    fig.update_xaxes(showgrid=False, linecolor=BORDER, tickfont=dict(color=MUTED))
+    fig.update_yaxes(showgrid=True, gridcolor=BORDER, zeroline=False, tickfont=dict(color=MUTED))
+    if height:
+        fig.update_layout(height=height)
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# Topbar
+# ---------------------------------------------------------------------------
+
+col_logo, col_titulo, col_badge = st.columns([0.6, 4, 1.4], vertical_alignment="center")
 with col_logo:
-    st.image(_LOGO_PATH, width=110)
+    st.image(_LOGO_PATH, width=64)
 with col_titulo:
-    st.markdown("## AGP Blema")
-    st.markdown("### Estimación de la Demanda para Heladerías")
-st.markdown("---")
+    st.markdown(
+        """
+        <div class="agp-topbar-title">
+            <h1>AGP Blema</h1>
+            <p>Estimación de la Demanda para Heladerías</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+with col_badge:
+    st.markdown('<div class="agp-badge">🍦 Holt-Winters</div>', unsafe_allow_html=True)
 
 
 # ---------------------------------------------------------------------------
 # Sidebar: configuración
 # ---------------------------------------------------------------------------
 
-st.sidebar.image(_LOGO_PATH, width=140)
+st.sidebar.image(_LOGO_PATH, width=110)
 st.sidebar.markdown("---")
 st.sidebar.header("⚙️ Configuración")
 
@@ -109,80 +411,12 @@ corregir_2020 = st.sidebar.checkbox(
 
 
 # ---------------------------------------------------------------------------
-# Procesamiento principal
+# Estado vacío: sin archivo cargado
 # ---------------------------------------------------------------------------
 
 if uploaded_file is None:
     st.markdown(
         """
-        <style>
-        .av-hero {
-            background: linear-gradient(135deg, #EAF8F4 0%, #FEFEFC 100%);
-            border-radius: 16px;
-            padding: 36px 40px;
-            margin-bottom: 28px;
-            border: 1px solid #D5EFE7;
-        }
-        .av-hero h2 {
-            color: #3A2B22;
-            font-size: 1.6rem;
-            margin: 0 0 8px 0;
-            font-weight: 700;
-        }
-        .av-steps {
-            display: flex;
-            gap: 16px;
-            margin: 28px 0 8px 0;
-        }
-        .av-step {
-            flex: 1;
-            background: #FEFEFC;
-            border: 1px solid #D5EFE7;
-            border-radius: 12px;
-            padding: 20px 18px;
-            text-align: center;
-        }
-        .av-step .av-num {
-            display: inline-block;
-            width: 28px;
-            height: 28px;
-            line-height: 28px;
-            border-radius: 50%;
-            background: #3FBF9F;
-            color: white;
-            font-weight: 700;
-            font-size: 0.85rem;
-            margin-bottom: 10px;
-        }
-        .av-step .av-icon {
-            font-size: 1.8rem;
-            display: block;
-            margin-bottom: 6px;
-        }
-        .av-step .av-title {
-            color: #3A2B22;
-            font-weight: 600;
-            font-size: 0.95rem;
-        }
-        .av-benefits {
-            margin-top: 24px;
-            padding-top: 20px;
-            border-top: 1px solid #D5EFE7;
-        }
-        .av-benefits .av-benefits-title {
-            color: #3A2B22;
-            font-weight: 600;
-            margin-bottom: 10px;
-            font-size: 0.95rem;
-        }
-        .av-benefit-item {
-            color: #6B4730;
-            font-size: 0.92rem;
-            margin-bottom: 6px;
-        }
-        .av-benefit-item b { color: #3A2B22; }
-        </style>
-
         <div class="av-hero">
             <h2>Predecí, planificá y maximizá la rentabilidad de tu heladería.</h2>
             <div class="av-steps">
@@ -229,52 +463,91 @@ if not resultado_val.valido:
 if resultado_val.advertencias:
     st.warning(resultado_val.resumen())
 
-# 3. Vista previa de datos
-st.subheader("📊 Datos Cargados")
-col1, col2 = st.columns([2, 1])
-with col1:
-    st.dataframe(df_raw, use_container_width=True)
-with col2:
-    st.metric("Filas", df_raw.shape[0])
-    st.metric("Columnas", df_raw.shape[1])
-
-# 4. Transformación
+# 3. Transformación (se necesita en todas las pestañas)
 df_serie = transformar_a_serie(df_raw)
-
 if corregir_2020:
     df_serie = corregir_pandemia(df_serie)
-    st.info("✅ Corrección de pandemia 2020 aplicada (marzo y abril).")
 
-# 5. Serie temporal
-st.subheader("📈 Serie Temporal de Ventas")
-fig_serie = px.line(
-    df_serie, x="fecha", y="ventas",
-    title="Ventas Históricas",
-    labels={"fecha": "Fecha", "ventas": "Ventas"},
+# ---------------------------------------------------------------------------
+# Firma de la corrida actual: si cambia el archivo o los parámetros,
+# se invalida el resultado del modelo guardado en session_state.
+# ---------------------------------------------------------------------------
+
+firma_actual = hashlib.md5(
+    f"{uploaded_file.name}-{uploaded_file.size}-{meses_validacion}-{corregir_2020}".encode()
+).hexdigest()
+
+if st.session_state.get("agp_firma") != firma_actual:
+    st.session_state["agp_firma"] = firma_actual
+    st.session_state["agp_resultado"] = None
+
+resultado = st.session_state.get("agp_resultado")
+
+
+# ---------------------------------------------------------------------------
+# Tabs de navegación (estilo dashboard)
+# ---------------------------------------------------------------------------
+
+tab_datos, tab_modelo, tab_prediccion, tab_export = st.tabs(
+    ["📊 Datos & Serie", "🚀 Modelo & Validación", "🔮 Predicción", "📥 Exportar"]
 )
-fig_serie.update_traces(line_color="#3FBF9F", line_width=2)
-tickvals, ticktext = etiquetas_eje_fecha_es(df_serie["fecha"])
-fig_serie.update_xaxes(tickvals=tickvals, ticktext=ticktext)
-fig_serie.update_layout(hovermode="x unified")
-st.plotly_chart(fig_serie, use_container_width=True)
 
-st.markdown("---")
+# ---------------------------------------------------------------------------
+# Tab 1: Datos y serie temporal
+# ---------------------------------------------------------------------------
 
-# 6. Botón para ejecutar el modelo
-if not st.button("🚀 Ejecutar Modelo", type="primary", use_container_width=True):
+with tab_datos:
+    kpi_row([
+        {"label": "Filas cargadas", "value": df_raw.shape[0]},
+        {"label": "Columnas", "value": df_raw.shape[1]},
+        {"label": "Meses en la serie", "value": len(df_serie)},
+        {
+            "label": "Corrección pandemia",
+            "value": "Aplicada" if corregir_2020 else "No aplicada",
+            "delta": "✓ 2020 ajustado" if corregir_2020 else None,
+            "tono": "neutral",
+        },
+    ])
+
+    st.markdown('<div class="agp-section">', unsafe_allow_html=True)
+    st.markdown("### 📋 Vista previa de los datos")
+    st.dataframe(df_raw, use_container_width=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    st.markdown('<div class="agp-section">', unsafe_allow_html=True)
+    st.markdown("### 📈 Serie temporal de ventas")
+    fig_serie = px.line(
+        df_serie, x="fecha", y="ventas",
+        labels={"fecha": "Fecha", "ventas": "Ventas"},
+    )
+    fig_serie.update_traces(line_color=TEAL, line_width=2.5)
+    tickvals, ticktext = etiquetas_eje_fecha_es(df_serie["fecha"])
+    fig_serie.update_xaxes(tickvals=tickvals, ticktext=ticktext)
+    fig_serie.update_layout(hovermode="x unified")
+    aplicar_tema_plotly(fig_serie, height=380)
+    st.plotly_chart(fig_serie, use_container_width=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    if st.button("🚀 Ejecutar Modelo", type="primary", use_container_width=True):
+        with st.spinner("Evaluando combinaciones de parámetros..."):
+            try:
+                resultado = ejecutar_pipeline(df_serie, n_meses_validacion=int(meses_validacion))
+                st.session_state["agp_resultado"] = resultado
+            except RuntimeError as e:
+                st.error(str(e))
+                st.stop()
+        st.rerun()
+
+
+# ---------------------------------------------------------------------------
+# A partir de acá, todo depende de que el modelo ya se haya ejecutado.
+# ---------------------------------------------------------------------------
+
+if resultado is None:
+    for tab in (tab_modelo, tab_prediccion, tab_export):
+        with tab:
+            st.info("👈 Cargá tus parámetros y tocá **Ejecutar Modelo** en la pestaña “Datos & Serie” para ver esta sección.")
     st.stop()
-
-
-# ---------------------------------------------------------------------------
-# Ejecución del modelo
-# ---------------------------------------------------------------------------
-
-with st.spinner("Evaluando combinaciones de parámetros..."):
-    try:
-        resultado = ejecutar_pipeline(df_serie, n_meses_validacion=int(meses_validacion))
-    except RuntimeError as e:
-        st.error(str(e))
-        st.stop()
 
 train = resultado.train
 test = resultado.test
@@ -285,34 +558,9 @@ df_futuro = resultado.df_futuro
 periodo_inicio = mes_anio_es(test["fecha"].min(), abreviado=True)
 periodo_fin = mes_anio_es(test["fecha"].max(), abreviado=True)
 
-st.info(
-    f"📊 Validación: últimos **{len(test)} meses** ({periodo_inicio} - {periodo_fin}) | "
-    f"Modelo: trend=**{resultado.trend or 'ninguna'}**, seasonal=**{resultado.seasonal}**"
-)
-
-# ---------------------------------------------------------------------------
-# Métricas
-# ---------------------------------------------------------------------------
-
-st.markdown("---")
-st.subheader("📊 Resultados del Modelo")
-
 total_real = test["ventas"].sum()
 total_predicho = predicciones_val.sum()
 error_total_pct = (metricas.error_absoluto_total / total_real * 100) if total_real else 0
-
-col1, col2, col3, col4, col5 = st.columns(5)
-col1.metric("MAE", formato_numero(metricas.mae))
-col2.metric("RMSE", formato_numero(metricas.rmse))
-col3.metric("R²", f"{metricas.r2:.4f}")
-col4.metric("Error Abs. Total", formato_numero(metricas.error_absoluto_total))
-col5.metric("Error Abs. %", f"{error_total_pct:.2f}%".replace(".", ","))
-
-# ---------------------------------------------------------------------------
-# Validación
-# ---------------------------------------------------------------------------
-
-st.subheader(f"🔍 Validación: Predicción vs Real ({periodo_inicio} - {periodo_fin})")
 
 comparativa = test[["fecha", "ventas"]].copy()
 comparativa["prediccion"] = predicciones_val.values
@@ -323,125 +571,162 @@ comparativa["mes"] = comparativa["fecha"].apply(lambda f: mes_anio_es(f, abrevia
 diferencia = total_real - total_predicho
 diferencia_pct = (diferencia / total_real * 100) if total_real else 0
 
-st.markdown("**Totales del período de validación:**")
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Total Real", formato_numero(total_real))
-c2.metric("Total Predicción", formato_numero(total_predicho))
-c3.metric("Diferencia", formato_numero(diferencia))
-c4.metric("Diferencia %", f"{diferencia_pct:.2f}%".replace(".", ","))
-
-fig_comp = go.Figure()
-fig_comp.add_trace(go.Bar(name="Real", x=comparativa["mes"], y=comparativa["ventas"],
-                          marker_color="#6B4730"))
-fig_comp.add_trace(go.Bar(name="Predicción", x=comparativa["mes"], y=comparativa["prediccion"],
-                          marker_color="#3FBF9F"))
-fig_comp.update_layout(
-    title="Comparación: Ventas Reales vs Predicción",
-    barmode="group",
-    xaxis_title="Mes",
-    yaxis_title="Ventas",
-)
-st.plotly_chart(fig_comp, use_container_width=True)
-
-# Tabla de validación con formato
-comp_display = comparativa[["mes", "ventas", "prediccion", "error", "error_pct"]].copy()
-comp_display["ventas"] = comp_display["ventas"].apply(formato_numero)
-comp_display["prediccion"] = comp_display["prediccion"].apply(formato_numero)
-comp_display["error"] = comp_display["error"].apply(formato_numero)
-comp_display["error_pct"] = comp_display["error_pct"].apply(
-    lambda x: f"{x:.2f}%".replace(".", ",")
-)
-st.dataframe(
-    comp_display.rename(columns={
-        "mes": "Mes", "ventas": "Venta Real",
-        "prediccion": "Predicción", "error": "Error", "error_pct": "Error %"
-    }),
-    use_container_width=True,
-    hide_index=True,
-)
 
 # ---------------------------------------------------------------------------
-# Predicciones futuras
+# Tab 2: Modelo y validación
 # ---------------------------------------------------------------------------
 
-st.markdown("---")
-st.subheader("🔮 Predicciones Futuras (Próximos 12 meses)")
-
-fig_fut = make_subplots(rows=1, cols=2,
-                        subplot_titles=("Serie Completa", "Predicciones Futuras"))
-df_historico = df_serie.dropna(subset=["ventas"])
-
-fig_fut.add_trace(
-    go.Scatter(x=df_historico["fecha"], y=df_historico["ventas"],
-               name="Histórico", line=dict(color="#6B4730")),
-    row=1, col=1,
-)
-fig_fut.add_trace(
-    go.Scatter(x=df_futuro["fecha"], y=df_futuro["prediccion"],
-               name="Predicción", line=dict(color="#D97757", dash="dash")),
-    row=1, col=1,
-)
-fig_fut.add_trace(
-    go.Bar(x=df_futuro["mes"], y=df_futuro["prediccion"],
-           name="Predicción Mensual", marker_color="#3FBF9F"),
-    row=1, col=2,
-)
-fig_fut.update_layout(height=400, showlegend=True)
-tickvals_hist, ticktext_hist = etiquetas_eje_fecha_es(
-    pd.concat([df_historico["fecha"], df_futuro["fecha"]])
-)
-fig_fut.update_xaxes(tickvals=tickvals_hist, ticktext=ticktext_hist, row=1, col=1)
-st.plotly_chart(fig_fut, use_container_width=True)
-
-c1, c2, c3 = st.columns(3)
-c1.metric("Total Anual Predicho", formato_numero(df_futuro["prediccion"].sum()))
-c2.metric("Promedio Mensual", formato_numero(df_futuro["prediccion"].mean()))
-c3.metric("Mes Pico", df_futuro.loc[df_futuro["prediccion"].idxmax(), "mes"])
-
-fut_display = df_futuro[["mes", "prediccion"]].copy()
-fut_display["prediccion"] = fut_display["prediccion"].apply(formato_numero)
-st.dataframe(
-    fut_display.rename(columns={"mes": "Mes", "prediccion": "Predicción"}),
-    use_container_width=True,
-    hide_index=True,
-)
-
-# ---------------------------------------------------------------------------
-# Exportar
-# ---------------------------------------------------------------------------
-
-st.markdown("---")
-st.subheader("📥 Exportar Resultados")
-
-col_dl1, col_dl2 = st.columns(2)
-
-with col_dl1:
-    st.download_button(
-        label="📥 Descargar Predicciones (CSV)",
-        data=df_futuro.to_csv(index=False),
-        file_name="predicciones_futuras.csv",
-        mime="text/csv",
-        use_container_width=True,
+with tab_modelo:
+    st.markdown(
+        f'<div class="agp-badge">📊 Validación: últimos {len(test)} meses '
+        f'({periodo_inicio} – {periodo_fin}) · trend={resultado.trend or "ninguna"} · '
+        f'seasonal={resultado.seasonal}</div><br/><br/>',
+        unsafe_allow_html=True,
     )
 
-with col_dl2:
-    with st.spinner("Generando informe PDF..."):
-        pdf_bytes = generar_pdf(
-            df_raw=df_raw,
-            df_serie=df_serie,
-            comparativa=comparativa,
-            df_futuro=df_futuro,
-            metricas=metricas,
-            trend=resultado.trend,
-            seasonal=resultado.seasonal,
-            total_real=total_real,
-            total_predicho=total_predicho,
-            correccion_pandemia=corregir_2020,
+    kpi_row([
+        {"label": "MAE", "value": formato_numero(metricas.mae)},
+        {"label": "RMSE", "value": formato_numero(metricas.rmse)},
+        {"label": "R²", "value": f"{metricas.r2:.4f}"},
+        {"label": "Error Abs. Total", "value": formato_numero(metricas.error_absoluto_total)},
+        {
+            "label": "Error Abs. %",
+            "value": f"{error_total_pct:.2f}%".replace(".", ","),
+            "delta": "Bajo error" if error_total_pct < 10 else "Revisar ajuste",
+            "tono": "pos" if error_total_pct < 10 else "neg",
+        },
+    ])
+
+    st.markdown('<div class="agp-section">', unsafe_allow_html=True)
+    st.markdown(f"### 🔍 Predicción vs Real ({periodo_inicio} – {periodo_fin})")
+
+    kpi_row([
+        {"label": "Total Real", "value": formato_numero(total_real)},
+        {"label": "Total Predicción", "value": formato_numero(total_predicho)},
+        {"label": "Diferencia", "value": formato_numero(diferencia)},
+        {
+            "label": "Diferencia %",
+            "value": f"{diferencia_pct:.2f}%".replace(".", ","),
+            "delta": "A favor" if diferencia >= 0 else "En contra",
+            "tono": "pos" if diferencia >= 0 else "neg",
+        },
+    ])
+
+    fig_comp = go.Figure()
+    fig_comp.add_trace(go.Bar(name="Real", x=comparativa["mes"], y=comparativa["ventas"],
+                              marker_color=BROWN))
+    fig_comp.add_trace(go.Bar(name="Predicción", x=comparativa["mes"], y=comparativa["prediccion"],
+                              marker_color=TEAL))
+    fig_comp.update_layout(barmode="group", xaxis_title="Mes", yaxis_title="Ventas")
+    aplicar_tema_plotly(fig_comp, height=380)
+    st.plotly_chart(fig_comp, use_container_width=True)
+
+    comp_display = comparativa[["mes", "ventas", "prediccion", "error", "error_pct"]].copy()
+    comp_display["ventas"] = comp_display["ventas"].apply(formato_numero)
+    comp_display["prediccion"] = comp_display["prediccion"].apply(formato_numero)
+    comp_display["error"] = comp_display["error"].apply(formato_numero)
+    comp_display["error_pct"] = comp_display["error_pct"].apply(
+        lambda x: f"{x:.2f}%".replace(".", ",")
+    )
+    st.dataframe(
+        comp_display.rename(columns={
+            "mes": "Mes", "ventas": "Venta Real",
+            "prediccion": "Predicción", "error": "Error", "error_pct": "Error %"
+        }),
+        use_container_width=True,
+        hide_index=True,
+    )
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
+# ---------------------------------------------------------------------------
+# Tab 3: Predicciones futuras
+# ---------------------------------------------------------------------------
+
+with tab_prediccion:
+    st.markdown('<div class="agp-section">', unsafe_allow_html=True)
+    st.markdown("### 🔮 Predicciones futuras (próximos 12 meses)")
+
+    kpi_row([
+        {"label": "Total Anual Predicho", "value": formato_numero(df_futuro["prediccion"].sum())},
+        {"label": "Promedio Mensual", "value": formato_numero(df_futuro["prediccion"].mean())},
+        {"label": "Mes Pico", "value": df_futuro.loc[df_futuro["prediccion"].idxmax(), "mes"]},
+    ])
+
+    fig_fut = make_subplots(rows=1, cols=2,
+                            subplot_titles=("Serie Completa", "Predicciones Futuras"))
+    df_historico = df_serie.dropna(subset=["ventas"])
+
+    fig_fut.add_trace(
+        go.Scatter(x=df_historico["fecha"], y=df_historico["ventas"],
+                   name="Histórico", line=dict(color=BROWN)),
+        row=1, col=1,
+    )
+    fig_fut.add_trace(
+        go.Scatter(x=df_futuro["fecha"], y=df_futuro["prediccion"],
+                   name="Predicción", line=dict(color=ORANGE, dash="dash")),
+        row=1, col=1,
+    )
+    fig_fut.add_trace(
+        go.Bar(x=df_futuro["mes"], y=df_futuro["prediccion"],
+               name="Predicción Mensual", marker_color=TEAL),
+        row=1, col=2,
+    )
+    tickvals_hist, ticktext_hist = etiquetas_eje_fecha_es(
+        pd.concat([df_historico["fecha"], df_futuro["fecha"]])
+    )
+    fig_fut.update_xaxes(tickvals=tickvals_hist, ticktext=ticktext_hist, row=1, col=1)
+    aplicar_tema_plotly(fig_fut, height=420)
+    st.plotly_chart(fig_fut, use_container_width=True)
+
+    fut_display = df_futuro[["mes", "prediccion"]].copy()
+    fut_display["prediccion"] = fut_display["prediccion"].apply(formato_numero)
+    st.dataframe(
+        fut_display.rename(columns={"mes": "Mes", "prediccion": "Predicción"}),
+        use_container_width=True,
+        hide_index=True,
+    )
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
+# ---------------------------------------------------------------------------
+# Tab 4: Exportar
+# ---------------------------------------------------------------------------
+
+with tab_export:
+    st.markdown('<div class="agp-section">', unsafe_allow_html=True)
+    st.markdown("### 📥 Exportar resultados")
+
+    col_dl1, col_dl2 = st.columns(2)
+
+    with col_dl1:
+        st.download_button(
+            label="📥 Descargar Predicciones (CSV)",
+            data=df_futuro.to_csv(index=False),
+            file_name="predicciones_futuras.csv",
+            mime="text/csv",
+            use_container_width=True,
         )
-    st.download_button(
-        label="📄 Descargar Informe PDF",
-        data=pdf_bytes,
-        file_name="informe_prediccion_heladerias.pdf",
-        mime="application/pdf",
-        use_container_width=True,
-    )
+
+    with col_dl2:
+        with st.spinner("Generando informe PDF..."):
+            pdf_bytes = generar_pdf(
+                df_raw=df_raw,
+                df_serie=df_serie,
+                comparativa=comparativa,
+                df_futuro=df_futuro,
+                metricas=metricas,
+                trend=resultado.trend,
+                seasonal=resultado.seasonal,
+                total_real=total_real,
+                total_predicho=total_predicho,
+                correccion_pandemia=corregir_2020,
+            )
+        st.download_button(
+            label="📄 Descargar Informe PDF",
+            data=pdf_bytes,
+            file_name="informe_prediccion_heladerias.pdf",
+            mime="application/pdf",
+            use_container_width=True,
+        )
+    st.markdown('</div>', unsafe_allow_html=True)

@@ -34,6 +34,7 @@ data/clientes/
 # Archivos generados
 # ==========================
 *.pdf
+outputs/
 
 # ==========================
 # Sistema operativo
@@ -50,3 +51,26 @@ Thumbs.db
 # Jupyter
 # ==========================
 .ipynb_checkpoints/
+
+# ==========================
+# Archivos sueltos / scratch de la carpeta local
+# (versiones previas, configs de otros negocios, exports puntuales)
+# No forman parte de la app modular en src/
+# ==========================
+app_legacy_local.py
+Modelo_Grido_HoltWinter.py
+modelo_holtwinters_parametrizado.py
+config_ejemplo_nuevo_negocio.py
+config_grido.py
+config_grido_pilar.py
+config_lacumbre.py
+ejecutar_app.command
+Untitled
+HISTORICO_VENTAS_2.csv
+comparacion_reales_vs_predichos_2025.csv
+comparacion_ultimos_12_meses.csv
+predicciones_2025.csv
+predicciones_actualizadas_agosto_diciembre_2025.csv
+predicciones_historicas.csv
+prediccion_mensual_apertura_por_linea.xlsx
+~$*.xlsx
