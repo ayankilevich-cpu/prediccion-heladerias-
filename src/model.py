@@ -34,6 +34,14 @@ COMBINACIONES_PARAMETROS = [
     (None, "multiplicative"),
 ]
 
+# Mínimo de meses en train para que Holt-Winters con seasonal_periods=12
+# tenga chance real de converger (2 ciclos estacionales completos). Es el
+# mismo mínimo que hoy hace fallar seleccionar_mejor_modelo con menos datos
+# (ver test_pipeline_con_datos_minimos_lanza_error_claro) — se usa acá para
+# decidir si alcanza el historial para un split de tres partes sin dejar el
+# train por debajo de ese piso.
+MIN_MESES_TRAIN_3WAY = 24
+
 
 # ---------------------------------------------------------------------------
 # Estructuras de datos
@@ -47,11 +55,6 @@ class Metricas:
     r2: float
     error_absoluto_total: float
 
-    @property
-    def error_absoluto_total_pct(self) -> float:
-        """Porcentaje del error absoluto sobre el total real (se calcula afuera)."""
-        return 0.0  # se completa en ResultadoValidacion
-
 
 @dataclass
 class ResultadoModelo:
@@ -60,10 +63,12 @@ class ResultadoModelo:
     trend: Optional[str]
     seasonal: str
     metricas: Metricas
+    metricas_baseline: Metricas
     predicciones_validacion: pd.Series
     train: pd.DataFrame
     test: pd.DataFrame
     df_futuro: pd.DataFrame
+    split_degradado: bool
 
 
 # ---------------------------------------------------------------------------
@@ -90,6 +95,47 @@ def dividir_train_test(df: pd.DataFrame, n_meses_validacion: int) -> tuple[pd.Da
     train = df_limpio.iloc[:-n_val].copy()
     test = df_limpio.iloc[-n_val:].copy()
     return train, test
+
+
+def dividir_train_val_test(
+    df: pd.DataFrame,
+    n_meses_validacion: int,
+    n_meses_test: int = 6,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, bool]:
+    """
+    Divide la serie en train / validación / test, en ese orden cronológico.
+
+    - `validación` se usa SOLO para elegir la combinación de parámetros
+      (ver seleccionar_mejor_modelo) — nunca para reportar métricas.
+    - `test` se usa SOLO para calcular la métrica final que ve el usuario,
+      y nunca participa en la selección del modelo. Esto es lo que corrige
+      el sesgo de selección documentado en la auditoría (hallazgo 14.1): antes,
+      el mismo conjunto elegía la combinación ganadora Y reportaba su precisión,
+      lo que infla la precisión mostrada respecto a la esperable en producción.
+
+    Si no hay historial suficiente para reservar un test genuino sin dejar el
+    train por debajo del mínimo que Holt-Winters necesita para converger
+    (MIN_MESES_TRAIN_3WAY), no se inventa un test — se cae al comportamiento
+    anterior de dos partes (train/validación) y se señala con
+    `split_degradado=True` para que quien llama avise que la métrica reportada
+    puede ser optimista (la validación hizo los dos roles).
+
+    Returns:
+        (train, validacion, test, split_degradado)
+    """
+    df_limpio = df.dropna(subset=["ventas"]).sort_values("fecha").reset_index(drop=True)
+    total = len(df_limpio)
+
+    if total - n_meses_validacion - n_meses_test >= MIN_MESES_TRAIN_3WAY:
+        train = df_limpio.iloc[: total - n_meses_validacion - n_meses_test].copy()
+        validacion = df_limpio.iloc[
+            total - n_meses_validacion - n_meses_test : total - n_meses_test
+        ].copy()
+        test = df_limpio.iloc[total - n_meses_test :].copy()
+        return train, validacion, test, False
+
+    train, validacion = dividir_train_test(df_limpio, n_meses_validacion)
+    return train, validacion, validacion.copy(), True
 
 
 # ---------------------------------------------------------------------------
@@ -136,6 +182,31 @@ def calcular_metricas(reales: pd.Series, predichos: pd.Series) -> Metricas:
         r2=r2_score(reales, predichos),
         error_absoluto_total=float(np.abs(reales.values - predichos.values).sum()),
     )
+
+
+def prediccion_naive_estacional(train: pd.DataFrame, periodo_a_predecir: pd.DataFrame) -> pd.Series:
+    """
+    Baseline ingenuo de referencia: predice cada mes de `periodo_a_predecir`
+    repitiendo el valor observado en `train` para ese mismo mes calendario,
+    un año antes. Si ese mes exacto no está en `train` (historial corto),
+    usa el promedio de ese mes calendario dentro de `train`.
+
+    Existe para responder una pregunta simple que los tests anteriores no
+    contestaban (hallazgo 14.6 de la auditoría): ¿Holt-Winters aporta algo
+    sobre "repetir lo que pasó el año pasado"? Si un cambio futuro degrada
+    el modelo hasta el punto de no superar esto, `test_model.py` debe
+    detectarlo.
+    """
+    train_por_fecha = train.set_index("fecha")["ventas"]
+    promedio_por_mes = train.groupby(train["fecha"].dt.month)["ventas"].mean()
+
+    predicciones = [
+        train_por_fecha.loc[fecha - pd.DateOffset(years=1)]
+        if (fecha - pd.DateOffset(years=1)) in train_por_fecha.index
+        else promedio_por_mes.get(fecha.month, train["ventas"].mean())
+        for fecha in periodo_a_predecir["fecha"]
+    ]
+    return pd.Series(predicciones, index=periodo_a_predecir.index)
 
 
 # ---------------------------------------------------------------------------
@@ -237,30 +308,62 @@ def generar_predicciones_futuras(
 def ejecutar_pipeline(
     df: pd.DataFrame,
     n_meses_validacion: int = 12,
+    n_meses_test: int = 6,
 ) -> ResultadoModelo:
     """
     Punto de entrada principal. Orquesta:
-    1. División train/test
-    2. Selección del mejor modelo
-    3. Entrenamiento final con validación
-    4. Predicciones futuras
+    1. División train / validación / test
+    2. Selección del mejor modelo (SOLO ve train + validación)
+    3. Entrenamiento final y métricas contra `test`, nunca visto en la selección
+    4. Métricas de un baseline ingenuo, para poder comparar
+    5. Predicciones futuras (re-entrenadas con el 100% del historial)
 
     Args:
         df: serie temporal con columnas 'fecha' y 'ventas'.
-        n_meses_validacion: meses a usar como período de validación.
+        n_meses_validacion: meses reservados para elegir la combinación de
+            parámetros (no se usan para reportar la métrica final).
+        n_meses_test: meses reservados, al final de la serie, exclusivamente
+            para reportar la métrica final — nunca se usan para elegir el
+            modelo. Si no hay historial suficiente para separarlos sin romper
+            el mínimo de convergencia, se cae a un split de dos partes (ver
+            `dividir_train_val_test`) y `ResultadoModelo.split_degradado`
+            queda en `True`.
 
     Returns:
         ResultadoModelo con todo lo necesario para la UI.
     """
-    train, test = dividir_train_test(df, n_meses_validacion)
+    train, validacion, test, split_degradado = dividir_train_val_test(
+        df, n_meses_validacion, n_meses_test
+    )
 
-    mejor_trend, mejor_seasonal, _ = seleccionar_mejor_modelo(train, test)
+    mejor_trend, mejor_seasonal, _ = seleccionar_mejor_modelo(train, validacion)
 
-    # Entrenamiento final sobre el mismo train para métricas de validación
-    modelo, predicciones_val = entrenar_modelo(train, len(test), mejor_trend, mejor_seasonal)
-    metricas = calcular_metricas(test["ventas"], predicciones_val)
+    if split_degradado:
+        # No hay historial para un test que la selección no haya visto ya:
+        # se mantiene el comportamiento anterior (la validación cumple los
+        # dos roles), pero de forma explícita — quien llama sabe que la
+        # métrica puede ser optimista, en vez de asumir que es un test limpio.
+        modelo, predicciones_reportadas = entrenar_modelo(
+            train, len(validacion), mejor_trend, mejor_seasonal
+        )
+        metricas = calcular_metricas(validacion["ventas"], predicciones_reportadas)
+    else:
+        # Test genuino: se re-entrena con train+validación (que nunca vio
+        # `test`) y se evalúa una única vez contra `test`. Esto es lo que
+        # corrige el sesgo de selección del hallazgo 14.1.
+        train_val = pd.concat([train, validacion], ignore_index=True)
+        modelo, predicciones_reportadas = entrenar_modelo(
+            train_val, len(test), mejor_trend, mejor_seasonal
+        )
+        metricas = calcular_metricas(test["ventas"], predicciones_reportadas)
 
-    # Predicciones futuras (re-entrenando con todos los datos)
+    baseline_pred = prediccion_naive_estacional(train, test)
+    metricas_baseline = calcular_metricas(test["ventas"], baseline_pred)
+
+    # Predicciones futuras: re-entrenamiento intencional con el 100% del
+    # historial (train+validación+test), documentado en generar_predicciones_futuras.
+    # Es, a propósito, un objeto distinto del que generó `metricas` arriba —
+    # ver la aclaración que se muestra en la UI (hallazgo 14.2/14.3).
     df_futuro = generar_predicciones_futuras(df, mejor_trend, mejor_seasonal)
 
     return ResultadoModelo(
@@ -268,8 +371,10 @@ def ejecutar_pipeline(
         trend=mejor_trend,
         seasonal=mejor_seasonal,
         metricas=metricas,
-        predicciones_validacion=predicciones_val,
+        metricas_baseline=metricas_baseline,
+        predicciones_validacion=predicciones_reportadas,
         train=train,
         test=test,
         df_futuro=df_futuro,
+        split_degradado=split_degradado,
     )

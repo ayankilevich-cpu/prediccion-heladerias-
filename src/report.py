@@ -211,6 +211,8 @@ def generar_pdf(
     total_real: float,
     total_predicho: float,
     correccion_pandemia: bool = False,
+    metricas_baseline=None,
+    split_degradado: bool = False,
 ) -> bytes:
     """
     Genera el informe PDF completo.
@@ -226,6 +228,12 @@ def generar_pdf(
         total_real: suma de ventas reales en el período de validación.
         total_predicho: suma de predicciones en el período de validación.
         correccion_pandemia: si se aplicó corrección 2020.
+        metricas_baseline: objeto Metricas del baseline ingenuo (repetir el
+            mismo mes del año anterior), para comparar contra el modelo.
+            Opcional para no romper llamadas existentes que aún no lo pasen.
+        split_degradado: si True, el historial era corto y la métrica de
+            arriba se calculó con el mismo período usado para elegir el
+            modelo (ver ejecutar_pipeline) — se aclara en el PDF.
 
     Returns:
         Bytes del PDF generado.
@@ -295,6 +303,15 @@ def generar_pdf(
     # ---- Resultados del modelo ----
     pdf.add_page()
     pdf.titulo_seccion("3. Resultados del Modelo")
+    if split_degradado:
+        pdf.texto_normal(
+            "Aviso: el historial cargado es corto. Estas métricas se calcularon "
+            "sobre el mismo período que se usó para elegir la configuración del "
+            "modelo, por lo que probablemente son más optimistas que la precisión "
+            "real esperable. Con más historial (recomendado: 3+ años) este aviso "
+            "no aparecería."
+        )
+        pdf.ln(2)
     pdf.subtitulo("Métricas de rendimiento")
     y0 = pdf.get_y()
     pdf.metrica("MAE", formato_numero(metricas.mae), 10, y0, 38)
@@ -303,6 +320,23 @@ def generar_pdf(
     pdf.metrica("Error Abs. Total", formato_numero(metricas.error_absoluto_total), 124, y0, 38)
     pdf.metrica("Error Abs. %", f"{error_pct:.2f}%".replace(".", ","), 162, y0, 38)
     pdf.set_y(y0 + 20)
+    pdf.ln(5)
+
+    if metricas_baseline is not None:
+        pdf.texto_normal(
+            f"Punto de referencia: repetir el mismo mes del año anterior (sin ningún "
+            f"modelo) da un MAE de {formato_numero(metricas_baseline.mae)}, contra "
+            f"{formato_numero(metricas.mae)} del modelo Holt-Winters."
+        )
+        pdf.ln(3)
+
+    pdf.texto_normal(
+        "Nota: las predicciones futuras de la sección 5 se generan re-entrenando "
+        "el modelo con el 100% del historial disponible, no solo con los datos "
+        "usados para las métricas de esta sección - es una práctica habitual en "
+        "forecasting, pero implica que no es exactamente el mismo modelo que "
+        "produjo las métricas de arriba."
+    )
     pdf.ln(5)
 
     # ---- Validación ----
