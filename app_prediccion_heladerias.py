@@ -279,6 +279,7 @@ with st.spinner("Evaluando combinaciones de parámetros..."):
 train = resultado.train
 test = resultado.test
 metricas = resultado.metricas
+metricas_baseline = resultado.metricas_baseline
 predicciones_val = resultado.predicciones_validacion
 df_futuro = resultado.df_futuro
 
@@ -289,6 +290,16 @@ st.info(
     f"📊 Validación: últimos **{len(test)} meses** ({periodo_inicio} - {periodo_fin}) | "
     f"Modelo: trend=**{resultado.trend or 'ninguna'}**, seasonal=**{resultado.seasonal}**"
 )
+
+if resultado.split_degradado:
+    st.warning(
+        "⚠️ El historial cargado es corto: no alcanza para reservar un período de "
+        "prueba que el modelo no haya visto antes al elegir su configuración. "
+        "Las métricas de abajo probablemente son más optimistas que la precisión "
+        "real esperable — se calcularon sobre el mismo período que se usó para "
+        "elegir el modelo. Con más historial (recomendado: 3+ años), este aviso "
+        "no debería aparecer."
+    )
 
 # ---------------------------------------------------------------------------
 # Métricas
@@ -307,6 +318,22 @@ col2.metric("RMSE", formato_numero(metricas.rmse))
 col3.metric("R²", f"{metricas.r2:.4f}")
 col4.metric("Error Abs. Total", formato_numero(metricas.error_absoluto_total))
 col5.metric("Error Abs. %", f"{error_total_pct:.2f}%".replace(".", ","))
+
+mejora_vs_baseline_pct = (
+    (metricas_baseline.mae - metricas.mae) / metricas_baseline.mae * 100
+    if metricas_baseline.mae else 0
+)
+st.caption(
+    f"📏 **Punto de referencia** — predecir cada mes repitiendo el mismo mes del año "
+    f"anterior (sin ningún modelo) da un MAE de **{formato_numero(metricas_baseline.mae)}**. "
+    f"El modelo Holt-Winters "
+    + (
+        f"mejora eso en **{mejora_vs_baseline_pct:.1f}%**."
+        if mejora_vs_baseline_pct > 0
+        else f"**no supera** esa referencia tan simple (diferencia: {mejora_vs_baseline_pct:.1f}%) "
+             "— con este historial, repetir el año anterior predice tan bien o mejor que el modelo."
+    )
+)
 
 # ---------------------------------------------------------------------------
 # Validación
@@ -366,6 +393,14 @@ st.dataframe(
 
 st.markdown("---")
 st.subheader("🔮 Predicciones Futuras (Próximos 12 meses)")
+st.caption(
+    "ℹ️ Estas predicciones se generan re-entrenando el modelo con el 100% del "
+    "historial cargado (no solo con los datos usados para las métricas de arriba), "
+    "para aprovechar toda la información disponible. Es una práctica habitual en "
+    "forecasting, pero por eso los números de \"Resultados del Modelo\" miden qué "
+    "tan bien predijo un modelo entrenado con menos datos — no son exactamente "
+    "el mismo modelo que generó estas predicciones."
+)
 
 fig_fut = make_subplots(rows=1, cols=2,
                         subplot_titles=("Serie Completa", "Predicciones Futuras"))
@@ -432,11 +467,13 @@ with col_dl2:
             comparativa=comparativa,
             df_futuro=df_futuro,
             metricas=metricas,
+            metricas_baseline=metricas_baseline,
             trend=resultado.trend,
             seasonal=resultado.seasonal,
             total_real=total_real,
             total_predicho=total_predicho,
             correccion_pandemia=corregir_2020,
+            split_degradado=resultado.split_degradado,
         )
     st.download_button(
         label="📄 Descargar Informe PDF",
