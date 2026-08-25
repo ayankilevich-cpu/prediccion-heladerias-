@@ -43,6 +43,10 @@ Se evalúan automáticamente estas combinaciones y se selecciona la de menor MAE
 | Sin tendencia | Aditiva       |
 | Sin tendencia | Multiplicativa |
 
+> **¿Selección automática o ajuste manual?**  
+> Esta aplicación usa **selección automática de parámetros**: entrena las cuatro combinaciones de la tabla sobre el período de entrenamiento, predice el tramo de validación reservado y elige la configuración con **menor MAE**. El usuario no define tendencia ni estacionalidad desde la interfaz.  
+> Un **ajuste manual experto** —fijar a mano `trend`, `seasonal` u opciones como `damped_trend` según el conocimiento del negocio y el análisis visual de la serie— es un enfoque alternativo habitual en Holt-Winters. Puede priorizar criterios de dominio (estabilidad, interpretabilidad, estacionalidad multiplicativa en heladerías) por encima del MAE mínimo. Ambos caminos son válidos: la app apunta a **reproducibilidad y facilidad de uso**; el ajuste manual requiere **criterio del analista** y suele usarse cuando se conoce bien el comportamiento del local.
+
 **Requisito mínimo:** 3 años de datos (36 meses), para garantizar al menos 2 ciclos estacionales completos en el conjunto de entrenamiento.
 
 ---
